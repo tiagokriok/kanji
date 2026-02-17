@@ -90,10 +90,6 @@ func (m Model) renderListFilterBar(width int) string {
 }
 
 func (m Model) renderListView(width, height int) string {
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("255")).
-		Padding(0, 1)
 	rowStyle := lipgloss.NewStyle().
 		Padding(0, 1).
 		Foreground(lipgloss.Color("252"))
@@ -102,8 +98,7 @@ func (m Model) renderListView(width, height int) string {
 		Foreground(lipgloss.Color("230")).
 		Background(lipgloss.Color("62"))
 
-	lines := make([]string, 0, len(m.tasks)+1)
-	lines = append(lines, titleStyle.Render("TASK LIST VIEW"))
+	lines := make([]string, 0, len(m.tasks))
 	if len(m.tasks) == 0 {
 		empty := lipgloss.NewStyle().
 			Width(max(1, width-4)).
