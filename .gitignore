@@ -1,0 +1,38 @@
+# Build artifacts
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test / coverage outputs
+*.test
+*.out
+coverage.out
+coverage.txt
+
+# Local databases and SQLite sidecars
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Environment and local overrides
+.env
+.env.*
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+tmp/
+prompt.md
