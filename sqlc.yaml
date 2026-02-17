@@ -1,0 +1,13 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "internal/infrastructure/db/sqlc/schema.sql"
+    queries: "internal/infrastructure/db/sqlc/queries.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/infrastructure/db/sqlc"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
