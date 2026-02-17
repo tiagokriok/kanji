@@ -156,24 +156,33 @@ func (m Model) renderListView(width, height int) string {
 }
 
 func (m Model) renderListFooter(width int) string {
-	defaultHint := "N: Create task | E: Edit task | D: Toggle details | /: Search | Enter: Open/Move | j k: Up/Down | h l: Left/Right"
-	if m.statusLine != "" && m.inputMode == inputNone {
-		defaultHint = m.statusLine
-	}
-
-	hint := lipgloss.NewStyle().
+	shortcuts := "N: Create task | E: Edit task | D: Toggle details | /: Search | Enter: Open/Move | j k: Up/Down | h l: Left/Right"
+	helpLine := lipgloss.NewStyle().
 		Width(width).
 		Padding(0, 1).
 		Foreground(lipgloss.Color("248")).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("250")).
-		Render(defaultHint)
+		Render(shortcuts)
+
+	lines := []string{}
+	if strings.TrimSpace(m.statusLine) != "" {
+		statusLine := lipgloss.NewStyle().
+			Width(width).
+			Padding(0, 1).
+			Foreground(lipgloss.Color("222")).
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("250")).
+			Render(m.statusLine)
+		lines = append(lines, statusLine)
+	}
+	lines = append(lines, helpLine)
 
 	inputLine := m.renderInlineInput(width)
-	if inputLine == "" {
-		return hint
+	if inputLine != "" {
+		lines = append(lines, inputLine)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, hint, inputLine)
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 func (m Model) renderInlineInput(width int) string {

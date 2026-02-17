@@ -194,7 +194,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = msg.err.Error()
 			return m, nil
 		}
-		m.statusLine = msg.status
+		m.statusLine = ""
 		return m, m.loadTasksCmd()
 	case tea.KeyMsg:
 		switch {
@@ -725,19 +725,21 @@ func (m Model) renderFooter() string {
 		inputLine = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(m.textArea.View())
 	}
 
-	status := m.statusLine
-	if status == "" {
-		status = "n:new e:edit c:comment /:search tab:view d:details s:column z:due soon"
-	}
-	if m.inputMode == inputTaskForm {
-		status += " | enter:next/save esc:cancel"
-	}
+	shortcuts := "n:new e:edit c:comment /:search tab:view d:details s:column z:due soon"
+	lines := []string{}
 
-	line := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(status)
-	if inputLine == "" {
-		return line
+	if strings.TrimSpace(m.statusLine) != "" {
+		status := m.statusLine
+		if m.inputMode == inputTaskForm {
+			status += " | enter:next/save esc:cancel"
+		}
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("222")).Render(status))
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, line, inputLine)
+	lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(shortcuts))
+	if inputLine != "" {
+		lines = append(lines, inputLine)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 func (m *Model) ensureSelection() {
