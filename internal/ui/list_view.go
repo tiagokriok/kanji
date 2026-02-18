@@ -165,6 +165,9 @@ func (m Model) renderListView(width, height int) string {
 func (m Model) renderListFooter(width int) string {
 	contentWidth := boxContentWidth(width, 1, true)
 	shortcuts := "N: Create task | E: Edit task | D: Toggle details | /: Search | Enter: Open/Move | j k: Up/Down | h l: Left/Right"
+	if strings.TrimSpace(m.titleFilter) != "" {
+		shortcuts += " | X: Clear search"
+	}
 	helpLine := lipgloss.NewStyle().
 		Width(contentWidth).
 		Padding(0, 1).

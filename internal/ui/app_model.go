@@ -228,6 +228,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 			m.statusLine = "Search by title"
 			return m, textinput.Blink
+		case key.Matches(msg, m.keys.ClearSearch):
+			if strings.TrimSpace(m.titleFilter) == "" {
+				return m, nil
+			}
+			m.titleFilter = ""
+			m.statusLine = ""
+			return m, m.loadTasksCmd()
 		case key.Matches(msg, m.keys.NewTask):
 			m.startCreateTaskForm()
 			return m, textinput.Blink
@@ -729,6 +736,9 @@ func (m Model) renderFooter() string {
 	}
 
 	shortcuts := "n:new e:edit c:comment /:search tab:view d:details s:column z:due soon"
+	if strings.TrimSpace(m.titleFilter) != "" {
+		shortcuts += " x:clear-search"
+	}
 	lines := []string{}
 
 	if strings.TrimSpace(m.statusLine) != "" {
