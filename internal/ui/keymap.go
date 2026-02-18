@@ -16,6 +16,7 @@ type keyMap struct {
 	AddComment      key.Binding
 	Search          key.Binding
 	ClearSearch     key.Binding
+	ShowKeybinds    key.Binding
 	ToggleView      key.Binding
 	MoveTask        key.Binding
 	CycleStatus     key.Binding
@@ -39,6 +40,7 @@ func newKeyMap() keyMap {
 		AddComment:      key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "add comment")),
 		Search:          key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 		ClearSearch:     key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "clear search")),
+		ShowKeybinds:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keybinds")),
 		ToggleView:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch view")),
 		MoveTask:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move task")),
 		CycleStatus:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "cycle column filter")),

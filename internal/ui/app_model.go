@@ -75,6 +75,16 @@ type opResultMsg struct {
 	err    error
 }
 
+type executeActionMsg struct {
+	action string
+}
+
+type keybindEntry struct {
+	ID    string
+	Key   string
+	Label string
+}
+
 type Model struct {
 	taskService    *application.TaskService
 	commentService *application.CommentService
@@ -97,13 +107,17 @@ type Model struct {
 	titleFilter   string
 	dueSoonFilter bool
 
-	viewMode    viewMode
-	showDetails bool
-	inputMode   inputMode
-	taskForm    *taskForm
+	viewMode     viewMode
+	showDetails  bool
+	inputMode    inputMode
+	taskForm     *taskForm
+	showKeybinds bool
 
 	textInput textinput.Model
 	textArea  textarea.Model
+	keyFilter textinput.Model
+
+	keySelected int
 
 	statusLine string
 	err        error
@@ -125,6 +139,11 @@ func NewModel(taskService *application.TaskService, commentService *application.
 	ta.SetHeight(8)
 	ta.Prompt = ""
 
+	kf := textinput.New()
+	kf.Placeholder = "Filter keybindings..."
+	kf.Prompt = "Filter: "
+	kf.CharLimit = 128
+
 	cols := make([]domain.Column, 0, len(setup.Columns))
 	cols = append(cols, setup.Columns...)
 	sort.Slice(cols, func(i, j int) bool {
@@ -145,6 +164,7 @@ func NewModel(taskService *application.TaskService, commentService *application.
 		showDetails:    true,
 		textInput:      ti,
 		textArea:       ta,
+		keyFilter:      kf,
 		keys:           newKeyMap(),
 	}
 }
@@ -154,6 +174,10 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.showKeybinds {
+		return m.updateKeybindPanel(msg)
+	}
+
 	if m.inputMode != inputNone {
 		return m.updateInputMode(msg)
 	}
@@ -164,6 +188,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.textArea.SetWidth(max(20, msg.Width/2-6))
 		return m, nil
+	case executeActionMsg:
+		return m.executeAction(msg.action)
 	case tasksLoadedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -200,6 +226,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
+		case key.Matches(msg, m.keys.ShowKeybinds):
+			m.openKeybindPanel()
+			return m, textinput.Blink
 		case key.Matches(msg, m.keys.ToggleView):
 			if m.viewMode == viewList {
 				m.viewMode = viewKanban
@@ -341,38 +370,45 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
+	var base string
 	if m.viewMode == viewList {
-		return m.renderListScreen()
+		base = m.renderListScreen()
+	} else {
+		header := m.renderHeader()
+		footer := m.renderFooter()
+		bodyHeight := m.height - lipgloss.Height(header) - lipgloss.Height(footer)
+		if bodyHeight < 5 {
+			bodyHeight = 5
+		}
+
+		mainPane := m.renderKanbanView(bodyHeight)
+
+		if m.showDetails {
+			detailWidth := m.width / 3
+			if detailWidth < 34 {
+				detailWidth = 34
+			}
+			mainWidth := m.width - detailWidth - 1
+			if mainWidth < 20 {
+				mainWidth = m.width
+				detailWidth = 0
+			}
+			mainPane = lipgloss.NewStyle().Width(mainWidth).Render(mainPane)
+			if detailWidth > 0 {
+				detailPane := m.renderDetailView(detailWidth, bodyHeight)
+				mainPane = lipgloss.JoinHorizontal(lipgloss.Top, mainPane, detailPane)
+			}
+		}
+
+		content := lipgloss.JoinVertical(lipgloss.Left, header, mainPane, footer)
+		base = lipgloss.NewStyle().Padding(0, 1).Render(content)
 	}
 
-	header := m.renderHeader()
-	footer := m.renderFooter()
-	bodyHeight := m.height - lipgloss.Height(header) - lipgloss.Height(footer)
-	if bodyHeight < 5 {
-		bodyHeight = 5
+	if m.showKeybinds {
+		return m.renderKeybindPanel(base)
 	}
 
-	mainPane := m.renderKanbanView(bodyHeight)
-
-	if m.showDetails {
-		detailWidth := m.width / 3
-		if detailWidth < 34 {
-			detailWidth = 34
-		}
-		mainWidth := m.width - detailWidth - 1
-		if mainWidth < 20 {
-			mainWidth = m.width
-			detailWidth = 0
-		}
-		mainPane = lipgloss.NewStyle().Width(mainWidth).Render(mainPane)
-		if detailWidth > 0 {
-			detailPane := m.renderDetailView(detailWidth, bodyHeight)
-			mainPane = lipgloss.JoinHorizontal(lipgloss.Top, mainPane, detailPane)
-		}
-	}
-
-	content := lipgloss.JoinVertical(lipgloss.Left, header, mainPane, footer)
-	return lipgloss.NewStyle().Padding(0, 1).Render(content)
+	return base
 }
 
 func (m Model) updateInputMode(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -431,6 +467,318 @@ func (m Model) updateInputMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.textInput, cmd = m.textInput.Update(msg)
 	m.inputMode = mode
 	return m, cmd
+}
+
+func (m *Model) openKeybindPanel() {
+	m.showKeybinds = true
+	m.keySelected = 0
+	m.keyFilter.SetValue("")
+	m.keyFilter.Width = max(24, m.width/3)
+	m.keyFilter.Focus()
+}
+
+func (m *Model) closeKeybindPanel() {
+	m.showKeybinds = false
+	m.keyFilter.Blur()
+}
+
+func (m Model) keybindEntries() []keybindEntry {
+	entries := []keybindEntry{
+		{ID: "new_task", Key: "n", Label: "Create task"},
+		{ID: "edit_task", Key: "e", Label: "Edit selected task"},
+		{ID: "edit_description", Key: "E", Label: "Edit description"},
+		{ID: "add_comment", Key: "c", Label: "Add comment"},
+		{ID: "search", Key: "/", Label: "Search"},
+		{ID: "toggle_details", Key: "d", Label: "Toggle details pane"},
+		{ID: "open_move", Key: "Enter", Label: "Open details / move in kanban"},
+		{ID: "move_task", Key: "m", Label: "Move task to next status"},
+		{ID: "toggle_view", Key: "Tab", Label: "Switch list/kanban"},
+		{ID: "cycle_status", Key: "s", Label: "Cycle status filter"},
+		{ID: "toggle_due_soon", Key: "z", Label: "Toggle due soon filter"},
+		{ID: "move_up", Key: "j,k,↑", Label: "Move selection up"},
+		{ID: "move_down", Key: "j,k,↓", Label: "Move selection down"},
+		{ID: "move_left", Key: "h,←", Label: "Move left (kanban)"},
+		{ID: "move_right", Key: "l,→", Label: "Move right (kanban)"},
+		{ID: "quit", Key: "q", Label: "Quit"},
+	}
+	if strings.TrimSpace(m.titleFilter) != "" {
+		entries = append(entries, keybindEntry{ID: "clear_search", Key: "x", Label: "Clear search"})
+	}
+	return entries
+}
+
+func (m Model) filteredKeybindEntries() []keybindEntry {
+	query := strings.ToLower(strings.TrimSpace(m.keyFilter.Value()))
+	entries := m.keybindEntries()
+	if query == "" {
+		return entries
+	}
+	filtered := make([]keybindEntry, 0, len(entries))
+	for _, entry := range entries {
+		if strings.Contains(strings.ToLower(entry.Key), query) || strings.Contains(strings.ToLower(entry.Label), query) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
+}
+
+func (m *Model) clampKeybindSelection() {
+	entries := m.filteredKeybindEntries()
+	if len(entries) == 0 {
+		m.keySelected = 0
+		return
+	}
+	if m.keySelected < 0 {
+		m.keySelected = 0
+	}
+	if m.keySelected >= len(entries) {
+		m.keySelected = len(entries) - 1
+	}
+}
+
+func (m Model) updateKeybindPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.keyFilter.Width = max(24, msg.Width/3)
+		return m, nil
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.ShowKeybinds):
+			m.closeKeybindPanel()
+			return m, nil
+		case key.Matches(msg, m.keys.Up):
+			m.keySelected--
+			m.clampKeybindSelection()
+			return m, nil
+		case key.Matches(msg, m.keys.Down):
+			m.keySelected++
+			m.clampKeybindSelection()
+			return m, nil
+		case key.Matches(msg, m.keys.Confirm):
+			entries := m.filteredKeybindEntries()
+			if len(entries) == 0 {
+				return m, nil
+			}
+			action := entries[m.keySelected].ID
+			m.closeKeybindPanel()
+			return m, func() tea.Msg {
+				return executeActionMsg{action: action}
+			}
+		}
+	}
+
+	var cmd tea.Cmd
+	m.keyFilter, cmd = m.keyFilter.Update(msg)
+	m.clampKeybindSelection()
+	return m, cmd
+}
+
+func (m Model) renderKeybindPanel(base string) string {
+	_ = base
+
+	panelWidth := m.width * 3 / 4
+	if panelWidth < 64 {
+		panelWidth = 64
+	}
+	if panelWidth > m.width-2 {
+		panelWidth = max(20, m.width-2)
+	}
+	panelHeight := m.height * 3 / 4
+	if panelHeight < 12 {
+		panelHeight = 12
+	}
+	if panelHeight > m.height-2 {
+		panelHeight = max(8, m.height-2)
+	}
+
+	contentWidth := boxContentWidth(panelWidth, 1, true)
+	contentHeight := boxContentHeight(panelHeight, true)
+	listHeight := max(1, contentHeight-5)
+
+	entries := m.filteredKeybindEntries()
+	offset := 0
+	if m.keySelected >= listHeight {
+		offset = m.keySelected - listHeight + 1
+	}
+	maxOffset := max(0, len(entries)-listHeight)
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+
+	lines := make([]string, 0, listHeight+4)
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("151")).Render("Keybindings")
+	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("Type to filter | Enter: execute | Esc: close")
+	lines = append(lines, title, hints, m.keyFilter.View(), "")
+
+	if len(entries) == 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("(no keybindings match filter)"))
+	} else {
+		end := offset + listHeight
+		if end > len(entries) {
+			end = len(entries)
+		}
+		for i := offset; i < end; i++ {
+			entry := entries[i]
+			keyLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Width(10).Render(entry.Key)
+			descLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(entry.Label)
+			line := keyLabel + " " + descLabel
+			if i == m.keySelected {
+				line = lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Render(line)
+			}
+			lines = append(lines, line)
+		}
+	}
+
+	panel := lipgloss.NewStyle().
+		Width(contentWidth).
+		Height(contentHeight).
+		Padding(0, 1).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("151")).
+		Render(strings.Join(lines, "\n"))
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+}
+
+func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case "quit":
+		return m, tea.Quit
+	case "toggle_view":
+		if m.viewMode == viewList {
+			m.viewMode = viewKanban
+		} else {
+			m.viewMode = viewList
+		}
+		m.ensureSelection()
+		if m.showDetails {
+			if task, ok := m.currentTask(); ok {
+				return m, m.loadCommentsCmd(task.ID)
+			}
+		}
+		return m, nil
+	case "toggle_details":
+		m.showDetails = !m.showDetails
+		if m.showDetails {
+			if task, ok := m.currentTask(); ok {
+				return m, m.loadCommentsCmd(task.ID)
+			}
+		}
+		return m, nil
+	case "search":
+		m.inputMode = inputSearch
+		m.textInput.SetValue(m.titleFilter)
+		m.textInput.Placeholder = "Search title"
+		m.textInput.Focus()
+		m.statusLine = "Search by title"
+		return m, textinput.Blink
+	case "clear_search":
+		if strings.TrimSpace(m.titleFilter) == "" {
+			return m, nil
+		}
+		m.titleFilter = ""
+		m.statusLine = ""
+		return m, m.loadTasksCmd()
+	case "new_task":
+		m.startCreateTaskForm()
+		return m, textinput.Blink
+	case "edit_task":
+		task, ok := m.currentTask()
+		if !ok {
+			return m, nil
+		}
+		m.startEditTaskForm(task)
+		return m, textinput.Blink
+	case "add_comment":
+		if _, ok := m.currentTask(); !ok {
+			return m, nil
+		}
+		m.inputMode = inputAddComment
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = "Comment body"
+		m.textInput.Focus()
+		m.statusLine = "Add comment"
+		return m, textinput.Blink
+	case "edit_description":
+		task, ok := m.currentTask()
+		if !ok {
+			return m, nil
+		}
+		m.inputMode = inputEditDescription
+		m.textArea.SetValue(task.DescriptionMD)
+		m.textArea.Focus()
+		m.statusLine = "Edit description (Ctrl+S save, Esc cancel)"
+		return m, nil
+	case "cycle_status":
+		m.cycleColumnFilter()
+		return m, m.loadTasksCmd()
+	case "toggle_due_soon":
+		m.dueSoonFilter = !m.dueSoonFilter
+		return m, m.loadTasksCmd()
+	case "move_up":
+		m.moveUp()
+		if m.showDetails {
+			if task, ok := m.currentTask(); ok {
+				return m, m.loadCommentsCmd(task.ID)
+			}
+		}
+		return m, nil
+	case "move_down":
+		m.moveDown()
+		if m.showDetails {
+			if task, ok := m.currentTask(); ok {
+				return m, m.loadCommentsCmd(task.ID)
+			}
+		}
+		return m, nil
+	case "move_left":
+		if m.viewMode == viewKanban {
+			if m.activeColumn > 0 {
+				m.activeColumn--
+			}
+			m.ensureKanbanRow()
+			if m.showDetails {
+				if task, ok := m.currentTask(); ok {
+					return m, m.loadCommentsCmd(task.ID)
+				}
+			}
+		}
+		return m, nil
+	case "move_right":
+		if m.viewMode == viewKanban {
+			if m.activeColumn < len(m.columns)-1 {
+				m.activeColumn++
+			}
+			m.ensureKanbanRow()
+			if m.showDetails {
+				if task, ok := m.currentTask(); ok {
+					return m, m.loadCommentsCmd(task.ID)
+				}
+			}
+		}
+		return m, nil
+	case "open_move":
+		if m.viewMode == viewKanban {
+			if task, ok := m.currentTask(); ok {
+				return m, m.moveToNextColumnCmd(task)
+			}
+			return m, nil
+		}
+		m.showDetails = true
+		if task, ok := m.currentTask(); ok {
+			return m, m.loadCommentsCmd(task.ID)
+		}
+		return m, nil
+	case "move_task":
+		if task, ok := m.currentTask(); ok {
+			return m, m.moveToNextColumnCmd(task)
+		}
+		return m, nil
+	default:
+		return m, nil
+	}
 }
 
 func (m *Model) startCreateTaskForm() {
@@ -735,7 +1083,7 @@ func (m Model) renderFooter() string {
 		inputLine = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(m.textArea.View())
 	}
 
-	shortcuts := "n:new e:edit c:comment /:search tab:view d:details s:column z:due soon"
+	shortcuts := "?:keybinds n:new /:search enter:open/move q:quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " x:clear-search"
 	}
