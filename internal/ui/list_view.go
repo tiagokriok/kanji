@@ -94,7 +94,20 @@ func (m Model) renderListView(width, height int) string {
 		offset = maxOffset
 	}
 
-	taskColWidth := max(16, innerWidth-31)
+	const (
+		statusContentWidth = 10
+		dueContentWidth    = 10
+		priContentWidth    = 3
+
+		cellHorizontalPadding = 2 // left + right
+		statusCellWidth       = statusContentWidth + cellHorizontalPadding
+		dueCellWidth          = dueContentWidth + cellHorizontalPadding
+		priCellWidth          = priContentWidth + cellHorizontalPadding
+	)
+
+	fixedNonTaskWidth := statusCellWidth + dueCellWidth + priCellWidth
+	const tableGutterReserve = 4
+	taskColWidth := max(8, innerWidth-fixedNonTaskWidth-tableGutterReserve)
 	rows := make([][]string, 0, len(m.tasks))
 	for _, task := range m.tasks {
 		column := "-"
@@ -103,12 +116,12 @@ func (m Model) renderListView(width, height int) string {
 		}
 		due := "-"
 		if task.DueAt != nil {
-			due = task.DueAt.Format("2006-01-02")
+			due = m.formatDueDate(*task.DueAt)
 		}
 		rows = append(rows, []string{
 			truncate(task.Title, taskColWidth),
-			truncate(column, 12),
-			truncate(due, 10),
+			truncate(column, statusContentWidth),
+			truncate(due, dueContentWidth),
 			fmt.Sprintf("p%d", task.Priority),
 		})
 	}
@@ -141,13 +154,13 @@ func (m Model) renderListView(width, height int) string {
 
 			switch col {
 			case 0:
-				return style.MaxWidth(taskColWidth)
+				return style.Width(taskColWidth)
 			case 1:
-				return style.Width(12)
+				return style.Width(statusCellWidth)
 			case 2:
-				return style.Width(10)
+				return style.Width(dueCellWidth)
 			case 3:
-				return style.Width(4)
+				return style.Width(priCellWidth)
 			default:
 				return style
 			}

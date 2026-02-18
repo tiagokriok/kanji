@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -30,7 +29,7 @@ func (m Model) renderDetailView(width, height int) string {
 		Render(fmt.Sprintf("%d", task.Priority))
 	meta = append(meta, fmt.Sprintf("Priority: %s", priorityValue))
 	if task.DueAt != nil {
-		meta = append(meta, fmt.Sprintf("Due: %s", task.DueAt.Format(time.RFC3339)))
+		meta = append(meta, fmt.Sprintf("Due: %s", m.formatDueDate(*task.DueAt)))
 	}
 	if task.ColumnID != nil {
 		meta = append(meta, fmt.Sprintf("Status: %s", m.columnName(*task.ColumnID)))

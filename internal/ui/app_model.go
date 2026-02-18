@@ -150,6 +150,8 @@ type Model struct {
 	taskService    *application.TaskService
 	commentService *application.CommentService
 
+	dateFormat userDateFormat
+
 	providerID    string
 	workspaceID   string
 	workspaceName string
@@ -214,6 +216,7 @@ func NewModel(taskService *application.TaskService, commentService *application.
 	return Model{
 		taskService:    taskService,
 		commentService: commentService,
+		dateFormat:     detectUserDateFormat(),
 		providerID:     setup.Provider.ID,
 		workspaceID:    setup.Workspace.ID,
 		workspaceName:  setup.Workspace.Name,
@@ -627,7 +630,7 @@ func (m *Model) startCreateTaskForm() {
 		mode:            taskFormCreate,
 		title:           newTaskFormInput("Title", "", 512),
 		description:     newTaskFormInput("Description", "", 2048),
-		dueDate:         newTaskFormInput("Due Date (YYYY-MM-DD)", "", 32),
+		dueDate:         newTaskFormInput(m.dueDatePlaceholder(), "", 32),
 		priority:        newTaskFormInput("Priority 0-5", "0", 2),
 		status:          newTaskFormInput("Status", status, 64),
 		descriptionFull: "",
@@ -649,7 +652,7 @@ func (m *Model) startEditTaskForm(task domain.Task) {
 
 	due := ""
 	if task.DueAt != nil {
-		due = task.DueAt.Format("2006-01-02")
+		due = m.formatDueDate(*task.DueAt)
 	}
 
 	form := &taskForm{
@@ -657,7 +660,7 @@ func (m *Model) startEditTaskForm(task domain.Task) {
 		taskID:          task.ID,
 		title:           newTaskFormInput("Title", task.Title, 512),
 		description:     newTaskFormInput("Description", summarizeDescription(task.DescriptionMD), 2048),
-		dueDate:         newTaskFormInput("Due Date (YYYY-MM-DD)", due, 32),
+		dueDate:         newTaskFormInput(m.dueDatePlaceholder(), due, 32),
 		priority:        newTaskFormInput("Priority 0-5", strconv.Itoa(task.Priority), 2),
 		status:          newTaskFormInput("Status", status, 64),
 		descriptionFull: task.DescriptionMD,
@@ -745,23 +748,6 @@ func openDescriptionEditorCmd(initial string) tea.Cmd {
 	})
 }
 
-func parseDueDate(raw string) (*time.Time, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-
-	if t, err := time.Parse("2006-01-02", raw); err == nil {
-		v := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-		return &v, nil
-	}
-	if t, err := time.Parse(time.RFC3339, raw); err == nil {
-		v := t.UTC()
-		return &v, nil
-	}
-	return nil, fmt.Errorf("due date must be YYYY-MM-DD or RFC3339")
-}
-
 func (m Model) submitTaskFormCmd() (tea.Cmd, error) {
 	if m.taskForm == nil {
 		return nil, fmt.Errorf("task form is not active")
@@ -784,7 +770,7 @@ func (m Model) submitTaskFormCmd() (tea.Cmd, error) {
 		return nil, fmt.Errorf("priority must be between 0 and 5")
 	}
 
-	dueAt, err := parseDueDate(m.taskForm.dueDate.Value())
+	dueAt, err := m.parseDueDateInput(m.taskForm.dueDate.Value())
 	if err != nil {
 		return nil, err
 	}
