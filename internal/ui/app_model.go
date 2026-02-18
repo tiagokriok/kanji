@@ -1046,6 +1046,38 @@ func (m *Model) adjustFilterSelection(delta int) bool {
 
 func (m Model) updateFilterPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tasksLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.statusLine = msg.err.Error()
+			return m, nil
+		}
+		m.tasks = m.applyActiveFilters(msg.tasks)
+		m.sortTasks(m.tasks)
+		m.ensureSelection()
+		if m.showDetails {
+			if task, ok := m.currentTask(); ok {
+				return m, m.loadCommentsCmd(task.ID)
+			}
+		}
+		m.comments = nil
+		return m, nil
+	case commentsLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.statusLine = msg.err.Error()
+			return m, nil
+		}
+		m.comments = msg.comments
+		return m, nil
+	case opResultMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.statusLine = msg.err.Error()
+			return m, nil
+		}
+		m.statusLine = ""
+		return m, m.loadTasksCmd()
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
