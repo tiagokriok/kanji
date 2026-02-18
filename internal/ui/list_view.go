@@ -152,6 +152,18 @@ func (m Model) renderListView(width, height int) string {
 			} else if row == selectedTableRow {
 				style = lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62"))
 			}
+
+			if row >= 0 {
+				taskIndex := row + offset
+				if taskIndex >= 0 && taskIndex < len(m.tasks) {
+					priority := normalizePriority(m.tasks[taskIndex].Priority)
+					priorityColor := priorityColor(priority)
+					if col == 3 {
+						style = style.Foreground(priorityColor).Bold(true)
+					}
+				}
+			}
+
 			switch col {
 			case 0:
 				return style.MaxWidth(taskColWidth)
@@ -245,4 +257,23 @@ func truncate(input string, maxLen int) string {
 		return input[:maxLen]
 	}
 	return input[:maxLen-3] + "..."
+}
+
+func priorityColor(priority int) lipgloss.Color {
+	switch priority {
+	case 0: // Critical
+		return lipgloss.Color("203")
+	case 1: // Urgent
+		return lipgloss.Color("208")
+	case 2: // High
+		return lipgloss.Color("220")
+	case 3: // Medium
+		return lipgloss.Color("117")
+	case 4: // Low
+		return lipgloss.Color("114")
+	case 5: // None
+		return lipgloss.Color("245")
+	default:
+		return lipgloss.Color("240")
+	}
 }
