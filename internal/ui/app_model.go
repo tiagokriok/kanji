@@ -549,9 +549,10 @@ func (m Model) updateInputMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if mode == inputTaskForm && m.taskForm != nil {
 		field := m.taskForm.currentField()
+		prevDescription := m.taskForm.description.Value()
 		var cmd tea.Cmd
 		*field, cmd = field.Update(msg)
-		if m.taskForm.focus == taskFieldDescription {
+		if m.taskForm.focus == taskFieldDescription && m.taskForm.description.Value() != prevDescription {
 			m.taskForm.descriptionFull = m.taskForm.description.Value()
 		}
 		return m, cmd
