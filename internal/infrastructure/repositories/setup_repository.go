@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/tiagokriok/lazytask/internal/domain"
@@ -92,6 +93,30 @@ func (r *SetupRepository) CreateWorkspace(ctx context.Context, workspace domain.
 	return tx.Commit()
 }
 
+func (r *SetupRepository) RenameWorkspace(ctx context.Context, workspaceID, name string) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	name = strings.TrimSpace(name)
+	if workspaceID == "" {
+		return fmt.Errorf("workspace id is required")
+	}
+	if name == "" {
+		return fmt.Errorf("workspace name is required")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx for rename workspace: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if _, err := tx.ExecContext(ctx, `UPDATE workspaces SET name = ? WHERE id = ?`, name, workspaceID); err != nil {
+		return fmt.Errorf("rename workspace: %w", err)
+	}
+	return tx.Commit()
+}
+
 func (r *SetupRepository) ListBoards(ctx context.Context, workspaceID string) ([]domain.Board, error) {
 	items, err := r.queries.ListBoards(ctx, workspaceID)
 	if err != nil {
@@ -122,6 +147,30 @@ func (r *SetupRepository) CreateBoard(ctx context.Context, board domain.Board) e
 	})
 	if err != nil {
 		return err
+	}
+	return tx.Commit()
+}
+
+func (r *SetupRepository) RenameBoard(ctx context.Context, boardID, name string) error {
+	boardID = strings.TrimSpace(boardID)
+	name = strings.TrimSpace(name)
+	if boardID == "" {
+		return fmt.Errorf("board id is required")
+	}
+	if name == "" {
+		return fmt.Errorf("board name is required")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx for rename board: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if _, err := tx.ExecContext(ctx, `UPDATE boards SET name = ? WHERE id = ?`, name, boardID); err != nil {
+		return fmt.Errorf("rename board: %w", err)
 	}
 	return tx.Commit()
 }

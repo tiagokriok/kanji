@@ -114,6 +114,7 @@ func (s *TaskService) ListTasks(ctx context.Context, filters ListTaskFilters) ([
 	}
 	return s.repo.List(ctx, domain.TaskFilter{
 		WorkspaceID: filters.WorkspaceID,
+		BoardID:     filters.BoardID,
 		TitleQuery:  strings.TrimSpace(filters.TitleQuery),
 		ColumnID:    strings.TrimSpace(filters.ColumnID),
 		Status:      strings.TrimSpace(filters.Status),

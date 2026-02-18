@@ -4,6 +4,7 @@ import "time"
 
 type ListTaskFilters struct {
 	WorkspaceID string
+	BoardID     string
 	TitleQuery  string
 	ColumnID    string
 	Status      string

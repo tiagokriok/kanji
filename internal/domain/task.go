@@ -34,6 +34,7 @@ type TaskPatch struct {
 
 type TaskFilter struct {
 	WorkspaceID string
+	BoardID     string
 	TitleQuery  string
 	ColumnID    string
 	Status      string

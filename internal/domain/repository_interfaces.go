@@ -22,8 +22,10 @@ type SetupRepository interface {
 	CreateProvider(ctx context.Context, provider Provider) error
 	ListWorkspaces(ctx context.Context) ([]Workspace, error)
 	CreateWorkspace(ctx context.Context, workspace Workspace) error
+	RenameWorkspace(ctx context.Context, workspaceID, name string) error
 	ListBoards(ctx context.Context, workspaceID string) ([]Board, error)
 	CreateBoard(ctx context.Context, board Board) error
+	RenameBoard(ctx context.Context, boardID, name string) error
 	ListColumns(ctx context.Context, boardID string) ([]Column, error)
 	CreateColumn(ctx context.Context, column Column) error
 }

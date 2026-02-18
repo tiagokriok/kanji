@@ -113,6 +113,7 @@ SELECT
   updated_at
 FROM tasks
 WHERE workspace_id = ?
+  AND (? = '' OR board_id = ?)
   AND (? = '' OR LOWER(title) LIKE '%' || LOWER(?) || '%')
   AND (? = '' OR column_id = ?)
   AND (? = '' OR status = ?)

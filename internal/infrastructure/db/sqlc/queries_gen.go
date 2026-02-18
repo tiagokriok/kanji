@@ -380,6 +380,7 @@ SELECT
   updated_at
 FROM tasks
 WHERE workspace_id = ?
+  AND (? = '' OR board_id = ?)
   AND (? = '' OR LOWER(title) LIKE '%' || LOWER(?) || '%')
   AND (? = '' OR column_id = ?)
   AND (? = '' OR status = ?)
@@ -389,6 +390,7 @@ ORDER BY updated_at DESC
 
 type ListTasksParams struct {
 	WorkspaceID   string
+	BoardID       string
 	TitleQuery    string
 	ColumnID      string
 	Status        string
@@ -399,6 +401,8 @@ type ListTasksParams struct {
 func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, listTasks,
 		arg.WorkspaceID,
+		arg.BoardID,
+		arg.BoardID,
 		arg.TitleQuery,
 		arg.TitleQuery,
 		arg.ColumnID,

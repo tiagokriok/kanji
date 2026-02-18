@@ -37,6 +37,21 @@ const (
 	inputTaskForm
 )
 
+type contextMode int
+
+const (
+	contextWorkspace contextMode = iota
+	contextBoard
+)
+
+type contextEditMode int
+
+const (
+	contextEditNone contextEditMode = iota
+	contextEditCreate
+	contextEditRename
+)
+
 type taskFormMode int
 
 const (
@@ -168,6 +183,7 @@ type keybindEntry struct {
 type Model struct {
 	taskService    *application.TaskService
 	commentService *application.CommentService
+	contextService *application.ContextService
 
 	dateFormat userDateFormat
 
@@ -177,6 +193,8 @@ type Model struct {
 	boardID       string
 	boardName     string
 	columns       []domain.Column
+	workspaces    []domain.Workspace
+	boards        []domain.Board
 
 	tasks    []domain.Task
 	comments []domain.Comment
@@ -197,13 +215,20 @@ type Model struct {
 	taskForm     *taskForm
 	showKeybinds bool
 	showFilters  bool
+	showContexts bool
+	contextMode  contextMode
 
 	textInput textinput.Model
 	textArea  textarea.Model
 
-	keyFilter   textinput.Model
-	keySelected int
-	filterFocus int
+	keyFilter        textinput.Model
+	keySelected      int
+	filterFocus      int
+	contextFilter    textinput.Model
+	contextSelected  int
+	contextEditMode  contextEditMode
+	contextEditInput textinput.Model
+	state            persistedUIState
 
 	statusLine string
 	err        error
@@ -214,7 +239,7 @@ type Model struct {
 	keys keyMap
 }
 
-func NewModel(taskService *application.TaskService, commentService *application.CommentService, setup application.BootstrapResult) Model {
+func NewModel(taskService *application.TaskService, commentService *application.CommentService, contextService *application.ContextService, setup application.BootstrapResult) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Type..."
 	ti.CharLimit = 512
@@ -230,33 +255,52 @@ func NewModel(taskService *application.TaskService, commentService *application.
 	kf.Prompt = "Filter: "
 	kf.CharLimit = 128
 
+	cf := textinput.New()
+	cf.Placeholder = "Filter..."
+	cf.Prompt = "Filter: "
+	cf.CharLimit = 128
+
+	ce := textinput.New()
+	ce.Placeholder = "Name..."
+	ce.Prompt = "> "
+	ce.CharLimit = 256
+
 	cols := make([]domain.Column, 0, len(setup.Columns))
 	cols = append(cols, setup.Columns...)
 	sort.Slice(cols, func(i, j int) bool {
 		return cols[i].Position < cols[j].Position
 	})
 
-	return Model{
-		taskService:    taskService,
-		commentService: commentService,
-		dateFormat:     detectUserDateFormat(),
-		providerID:     setup.Provider.ID,
-		workspaceID:    setup.Workspace.ID,
-		workspaceName:  setup.Workspace.Name,
-		boardID:        setup.Board.ID,
-		boardName:      setup.Board.Name,
-		columns:        cols,
-		filterIndex:    -1,
-		priorityFilter: -1,
-		dueFilter:      dueFilterAny,
-		sortMode:       sortByPriority,
-		viewMode:       viewList,
-		showDetails:    true,
-		textInput:      ti,
-		textArea:       ta,
-		keyFilter:      kf,
-		keys:           newKeyMap(),
+	state := loadPersistedUIState()
+
+	model := Model{
+		taskService:      taskService,
+		commentService:   commentService,
+		contextService:   contextService,
+		dateFormat:       detectUserDateFormat(),
+		providerID:       setup.Provider.ID,
+		workspaceID:      setup.Workspace.ID,
+		workspaceName:    setup.Workspace.Name,
+		boardID:          setup.Board.ID,
+		boardName:        setup.Board.Name,
+		columns:          cols,
+		filterIndex:      -1,
+		priorityFilter:   -1,
+		dueFilter:        dueFilterAny,
+		sortMode:         sortByPriority,
+		viewMode:         viewList,
+		showDetails:      true,
+		textInput:        ti,
+		textArea:         ta,
+		keyFilter:        kf,
+		contextFilter:    cf,
+		contextEditInput: ce,
+		state:            state,
+		keys:             newKeyMap(),
 	}
+
+	model.bootstrapContexts()
+	return model
 }
 
 func (m Model) Init() tea.Cmd {
@@ -269,6 +313,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if m.showFilters {
 		return m.updateFilterPanel(msg)
+	}
+	if m.showContexts {
+		return m.updateContextPanel(msg)
 	}
 	if m.inputMode != inputNone {
 		return m.updateInputMode(msg)
@@ -325,6 +372,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.ShowFilters):
 			m.openFilterPanel()
 			return m, nil
+		case key.Matches(msg, m.keys.OpenWorkspace):
+			m.openContextPanel(contextWorkspace)
+			return m, textinput.Blink
+		case key.Matches(msg, m.keys.OpenBoard):
+			m.openContextPanel(contextBoard)
+			return m, textinput.Blink
 		case key.Matches(msg, m.keys.ToggleView):
 			if m.viewMode == viewList {
 				m.viewMode = viewKanban
@@ -507,6 +560,9 @@ func (m Model) View() string {
 	}
 	if m.showFilters {
 		return m.renderFilterPanel(base)
+	}
+	if m.showContexts {
+		return m.renderContextPanel(base)
 	}
 	if m.inputMode == inputTaskForm && m.taskForm != nil {
 		return m.renderTaskFormPanel(base)
@@ -929,6 +985,519 @@ func (m *Model) closeFilterPanel() {
 	m.showFilters = false
 }
 
+func (m *Model) bootstrapContexts() {
+	if m.contextService == nil {
+		return
+	}
+	_ = m.reloadContextsFromStorage()
+}
+
+func (m *Model) persistContextSelection() {
+	m.state.LastWorkspaceID = m.workspaceID
+	if m.state.LastBoardByWorkspace == nil {
+		m.state.LastBoardByWorkspace = map[string]string{}
+	}
+	if m.workspaceID != "" && m.boardID != "" {
+		m.state.LastBoardByWorkspace[m.workspaceID] = m.boardID
+	}
+	_ = savePersistedUIState(m.state)
+}
+
+func (m *Model) reloadContextsFromStorage() error {
+	if m.contextService == nil {
+		return nil
+	}
+	ctx := context.Background()
+	workspaces, err := m.contextService.ListWorkspaces(ctx)
+	if err != nil {
+		return err
+	}
+	m.workspaces = workspaces
+	if len(workspaces) == 0 {
+		return nil
+	}
+
+	targetWorkspaceID := m.workspaceID
+	if m.state.LastWorkspaceID != "" && containsWorkspace(workspaces, m.state.LastWorkspaceID) {
+		targetWorkspaceID = m.state.LastWorkspaceID
+	}
+	if targetWorkspaceID == "" || !containsWorkspace(workspaces, targetWorkspaceID) {
+		targetWorkspaceID = workspaces[0].ID
+	}
+	if err := m.switchWorkspace(targetWorkspaceID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func containsWorkspace(items []domain.Workspace, workspaceID string) bool {
+	for _, item := range items {
+		if item.ID == workspaceID {
+			return true
+		}
+	}
+	return false
+}
+
+func containsBoard(items []domain.Board, boardID string) bool {
+	for _, item := range items {
+		if item.ID == boardID {
+			return true
+		}
+	}
+	return false
+}
+
+func workspaceName(items []domain.Workspace, workspaceID string) string {
+	for _, item := range items {
+		if item.ID == workspaceID {
+			return item.Name
+		}
+	}
+	return ""
+}
+
+func boardName(items []domain.Board, boardID string) string {
+	for _, item := range items {
+		if item.ID == boardID {
+			return item.Name
+		}
+	}
+	return ""
+}
+
+func (m *Model) switchWorkspace(workspaceID string) error {
+	if m.contextService == nil {
+		return nil
+	}
+	ctx := context.Background()
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return fmt.Errorf("workspace id is required")
+	}
+
+	if len(m.workspaces) == 0 {
+		workspaces, err := m.contextService.ListWorkspaces(ctx)
+		if err != nil {
+			return err
+		}
+		m.workspaces = workspaces
+	}
+	if !containsWorkspace(m.workspaces, workspaceID) {
+		return fmt.Errorf("workspace not found")
+	}
+
+	m.workspaceID = workspaceID
+	m.workspaceName = workspaceName(m.workspaces, workspaceID)
+	m.columnFilter = ""
+	m.filterIndex = -1
+
+	boards, err := m.contextService.ListBoards(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	m.boards = boards
+	if len(boards) == 0 {
+		board, createErr := m.contextService.CreateBoard(ctx, workspaceID, "Main")
+		if createErr != nil {
+			return createErr
+		}
+		m.boards = []domain.Board{board}
+	}
+
+	targetBoardID := ""
+	if saved, ok := m.state.LastBoardByWorkspace[workspaceID]; ok && containsBoard(m.boards, saved) {
+		targetBoardID = saved
+	}
+	if targetBoardID == "" && containsBoard(m.boards, m.boardID) {
+		targetBoardID = m.boardID
+	}
+	if targetBoardID == "" {
+		targetBoardID = m.boards[0].ID
+	}
+	if err := m.switchBoard(targetBoardID); err != nil {
+		return err
+	}
+	m.persistContextSelection()
+	return nil
+}
+
+func (m *Model) switchBoard(boardID string) error {
+	if m.contextService == nil {
+		return nil
+	}
+	ctx := context.Background()
+	boardID = strings.TrimSpace(boardID)
+	if boardID == "" {
+		return fmt.Errorf("board id is required")
+	}
+
+	if len(m.boards) == 0 {
+		boards, err := m.contextService.ListBoards(ctx, m.workspaceID)
+		if err != nil {
+			return err
+		}
+		m.boards = boards
+	}
+	if !containsBoard(m.boards, boardID) {
+		return fmt.Errorf("board not found")
+	}
+
+	m.boardID = boardID
+	m.boardName = boardName(m.boards, boardID)
+	m.columnFilter = ""
+	m.filterIndex = -1
+
+	columns, err := m.contextService.ListColumns(ctx, boardID)
+	if err != nil {
+		return err
+	}
+	sort.Slice(columns, func(i, j int) bool {
+		return columns[i].Position < columns[j].Position
+	})
+	m.columns = columns
+	m.persistContextSelection()
+	return nil
+}
+
+func (m *Model) openContextPanel(mode contextMode) {
+	m.showContexts = true
+	m.contextMode = mode
+	m.contextSelected = 0
+	m.contextEditMode = contextEditNone
+	m.contextEditInput.SetValue("")
+	m.contextFilter.SetValue("")
+	m.contextFilter.Focus()
+}
+
+func (m *Model) closeContextPanel() {
+	m.showContexts = false
+	m.contextEditMode = contextEditNone
+	m.contextEditInput.Blur()
+	m.contextFilter.Blur()
+}
+
+func (m Model) contextItems() []string {
+	query := strings.ToLower(strings.TrimSpace(m.contextFilter.Value()))
+	items := make([]string, 0)
+	if m.contextMode == contextWorkspace {
+		for _, ws := range m.workspaces {
+			if query == "" || strings.Contains(strings.ToLower(ws.Name), query) {
+				items = append(items, ws.ID)
+			}
+		}
+	} else {
+		for _, b := range m.boards {
+			if query == "" || strings.Contains(strings.ToLower(b.Name), query) {
+				items = append(items, b.ID)
+			}
+		}
+	}
+	return items
+}
+
+func (m *Model) clampContextSelection() {
+	items := m.contextItems()
+	if len(items) == 0 {
+		m.contextSelected = 0
+		return
+	}
+	if m.contextSelected < 0 {
+		m.contextSelected = 0
+	}
+	if m.contextSelected >= len(items) {
+		m.contextSelected = len(items) - 1
+	}
+}
+
+func (m *Model) selectedContextID() string {
+	items := m.contextItems()
+	if len(items) == 0 {
+		return ""
+	}
+	m.clampContextSelection()
+	return items[m.contextSelected]
+}
+
+func (m Model) contextTitle() string {
+	if m.contextMode == contextWorkspace {
+		return "Workspaces"
+	}
+	return "Boards"
+}
+
+func (m Model) contextNameByID(id string) string {
+	if m.contextMode == contextWorkspace {
+		return workspaceName(m.workspaces, id)
+	}
+	return boardName(m.boards, id)
+}
+
+func (m *Model) beginContextCreate() {
+	m.contextEditMode = contextEditCreate
+	m.contextEditInput.SetValue("")
+	m.contextEditInput.Placeholder = "New name"
+	m.contextEditInput.Focus()
+}
+
+func (m *Model) beginContextRename() {
+	id := m.selectedContextID()
+	if id == "" {
+		return
+	}
+	m.contextEditMode = contextEditRename
+	m.contextEditInput.SetValue(m.contextNameByID(id))
+	m.contextEditInput.Placeholder = "Rename"
+	m.contextEditInput.Focus()
+}
+
+func (m *Model) submitContextEdit() error {
+	if m.contextService == nil {
+		return nil
+	}
+	value := strings.TrimSpace(m.contextEditInput.Value())
+	if value == "" {
+		return fmt.Errorf("name is required")
+	}
+	ctx := context.Background()
+
+	if m.contextEditMode == contextEditCreate {
+		if m.contextMode == contextWorkspace {
+			workspace, board, err := m.contextService.CreateWorkspace(ctx, m.providerID, value)
+			if err != nil {
+				return err
+			}
+			_ = workspace
+			if err := m.reloadContextsFromStorage(); err != nil {
+				return err
+			}
+			if err := m.switchWorkspace(board.WorkspaceID); err != nil {
+				return err
+			}
+			if err := m.switchBoard(board.ID); err != nil {
+				return err
+			}
+		} else {
+			board, err := m.contextService.CreateBoard(ctx, m.workspaceID, value)
+			if err != nil {
+				return err
+			}
+			boards, listErr := m.contextService.ListBoards(ctx, m.workspaceID)
+			if listErr != nil {
+				return listErr
+			}
+			m.boards = boards
+			if err := m.switchBoard(board.ID); err != nil {
+				return err
+			}
+		}
+	} else if m.contextEditMode == contextEditRename {
+		id := m.selectedContextID()
+		if id == "" {
+			return fmt.Errorf("no item selected")
+		}
+		if m.contextMode == contextWorkspace {
+			if err := m.contextService.RenameWorkspace(ctx, id, value); err != nil {
+				return err
+			}
+			workspaces, err := m.contextService.ListWorkspaces(ctx)
+			if err != nil {
+				return err
+			}
+			m.workspaces = workspaces
+			m.workspaceName = workspaceName(workspaces, m.workspaceID)
+		} else {
+			if err := m.contextService.RenameBoard(ctx, id, value); err != nil {
+				return err
+			}
+			boards, err := m.contextService.ListBoards(ctx, m.workspaceID)
+			if err != nil {
+				return err
+			}
+			m.boards = boards
+			m.boardName = boardName(boards, m.boardID)
+		}
+	}
+	m.contextEditMode = contextEditNone
+	m.contextEditInput.Blur()
+	m.contextFilter.Focus()
+	return nil
+}
+
+func (m Model) updateContextPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tasksLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.statusLine = msg.err.Error()
+			return m, nil
+		}
+		m.tasks = m.applyActiveFilters(msg.tasks)
+		m.sortTasks(m.tasks)
+		m.ensureSelection()
+		if m.showDetails {
+			if task, ok := m.currentTask(); ok {
+				return m, m.loadCommentsCmd(task.ID)
+			}
+		}
+		m.comments = nil
+		return m, nil
+	case commentsLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.statusLine = msg.err.Error()
+			return m, nil
+		}
+		m.comments = msg.comments
+		return m, nil
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+	case tea.KeyMsg:
+		if m.contextEditMode != contextEditNone {
+			switch {
+			case key.Matches(msg, m.keys.Cancel):
+				m.contextEditMode = contextEditNone
+				m.contextEditInput.Blur()
+				m.contextFilter.Focus()
+				return m, nil
+			case key.Matches(msg, m.keys.Confirm):
+				if err := m.submitContextEdit(); err != nil {
+					m.statusLine = err.Error()
+					return m, nil
+				}
+				return m, m.loadTasksCmd()
+			}
+			var cmd tea.Cmd
+			m.contextEditInput, cmd = m.contextEditInput.Update(msg)
+			return m, cmd
+		}
+
+		switch {
+		case key.Matches(msg, m.keys.Cancel):
+			m.closeContextPanel()
+			return m, nil
+		case key.Matches(msg, m.keys.OpenWorkspace):
+			m.openContextPanel(contextWorkspace)
+			return m, textinput.Blink
+		case key.Matches(msg, m.keys.OpenBoard):
+			m.openContextPanel(contextBoard)
+			return m, textinput.Blink
+		case key.Matches(msg, m.keys.Up):
+			m.contextSelected--
+			m.clampContextSelection()
+			return m, nil
+		case key.Matches(msg, m.keys.Down):
+			m.contextSelected++
+			m.clampContextSelection()
+			return m, nil
+		case msg.String() == "n":
+			m.beginContextCreate()
+			return m, textinput.Blink
+		case msg.String() == "r":
+			m.beginContextRename()
+			return m, textinput.Blink
+		case key.Matches(msg, m.keys.Confirm):
+			id := m.selectedContextID()
+			if id == "" {
+				return m, nil
+			}
+			var err error
+			if m.contextMode == contextWorkspace {
+				err = m.switchWorkspace(id)
+			} else {
+				err = m.switchBoard(id)
+			}
+			if err != nil {
+				m.statusLine = err.Error()
+				return m, nil
+			}
+			m.closeContextPanel()
+			return m, m.loadTasksCmd()
+		}
+	}
+
+	var cmd tea.Cmd
+	m.contextFilter, cmd = m.contextFilter.Update(msg)
+	m.clampContextSelection()
+	return m, cmd
+}
+
+func (m Model) renderContextPanel(base string) string {
+	_ = base
+	panelWidth := m.width * 2 / 3
+	if panelWidth < 64 {
+		panelWidth = 64
+	}
+	if panelWidth > m.width-2 {
+		panelWidth = max(20, m.width-2)
+	}
+	panelHeight := m.height * 3 / 4
+	if panelHeight < 12 {
+		panelHeight = 12
+	}
+	if panelHeight > m.height-2 {
+		panelHeight = max(8, m.height-2)
+	}
+
+	contentWidth := boxContentWidth(panelWidth, 1, true)
+	contentHeight := boxContentHeight(panelHeight, true)
+	listHeight := max(1, contentHeight-6)
+
+	items := m.contextItems()
+	offset := 0
+	if m.contextSelected >= listHeight {
+		offset = m.contextSelected - listHeight + 1
+	}
+	if maxOffset := max(0, len(items)-listHeight); offset > maxOffset {
+		offset = maxOffset
+	}
+
+	lines := []string{
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("151")).Render(m.contextTitle()),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("Type to filter | Enter: switch | n:create | r:rename | Esc:close"),
+		m.contextFilter.View(),
+		"",
+	}
+
+	if len(items) == 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("(empty)"))
+	} else {
+		end := offset + listHeight
+		if end > len(items) {
+			end = len(items)
+		}
+		for i := offset; i < end; i++ {
+			id := items[i]
+			name := m.contextNameByID(id)
+			line := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(name)
+			if i == m.contextSelected {
+				line = lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Render(line)
+			}
+			lines = append(lines, line)
+		}
+	}
+
+	if m.contextEditMode != contextEditNone {
+		label := "Create"
+		if m.contextEditMode == contextEditRename {
+			label = "Rename"
+		}
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(label+": "+m.contextEditInput.View()))
+	}
+
+	panel := lipgloss.NewStyle().
+		Width(contentWidth).
+		Height(contentHeight).
+		Padding(0, 1).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("151")).
+		Render(strings.Join(lines, "\n"))
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+}
+
 func (m Model) statusFilterLabel() string {
 	if m.filterIndex >= 0 && m.filterIndex < len(m.columns) {
 		return m.columns[m.filterIndex].Name
@@ -1012,36 +1581,84 @@ func (m *Model) cycleSortMode() {
 	m.sortMode = taskSortMode(next)
 }
 
-func (m *Model) adjustFilterSelection(delta int) bool {
+func workspaceIndexByID(items []domain.Workspace, id string) int {
+	for i, item := range items {
+		if item.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func boardIndexByID(items []domain.Board, id string) int {
+	for i, item := range items {
+		if item.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func (m *Model) adjustFilterSelection(delta int) (bool, error) {
 	changed := false
 	switch m.filterFocus {
-	case 0: // status
+	case 0: // workspace
+		if len(m.workspaces) == 0 {
+			return false, nil
+		}
+		current := workspaceIndexByID(m.workspaces, m.workspaceID)
+		if current < 0 {
+			current = 0
+		}
+		next := (current + delta + len(m.workspaces)) % len(m.workspaces)
+		if m.workspaces[next].ID != m.workspaceID {
+			if err := m.switchWorkspace(m.workspaces[next].ID); err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	case 1: // board
+		if len(m.boards) == 0 {
+			return false, nil
+		}
+		current := boardIndexByID(m.boards, m.boardID)
+		if current < 0 {
+			current = 0
+		}
+		next := (current + delta + len(m.boards)) % len(m.boards)
+		if m.boards[next].ID != m.boardID {
+			if err := m.switchBoard(m.boards[next].ID); err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	case 2: // status
 		total := len(m.columns) + 1 // + All
 		if total <= 0 {
-			return false
+			return false, nil
 		}
 		current := m.filterIndex + 1
 		next := (current + delta + total) % total
 		m.setStatusFilterByIndex(next - 1)
 		changed = true
-	case 1: // due
+	case 3: // due
 		total := int(dueFilterNoDate) + 1
 		next := (int(m.dueFilter) + delta + total) % total
 		m.dueFilter = dueFilterMode(next)
 		changed = true
-	case 2: // priority
+	case 4: // priority
 		total := 7 // all + 0..5
 		current := m.priorityFilter + 1
 		next := (current + delta + total) % total
 		m.priorityFilter = next - 1
 		changed = true
-	case 3: // sort
+	case 5: // sort
 		total := int(sortByCreated) + 1
 		next := (int(m.sortMode) + delta + total) % total
 		m.sortMode = taskSortMode(next)
 		changed = true
 	}
-	return changed
+	return changed, nil
 }
 
 func (m Model) updateFilterPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1090,22 +1707,28 @@ func (m Model) updateFilterPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Up):
 			m.filterFocus--
 			if m.filterFocus < 0 {
-				m.filterFocus = 3
+				m.filterFocus = 5
 			}
 			return m, nil
 		case key.Matches(msg, m.keys.Down):
 			m.filterFocus++
-			if m.filterFocus > 3 {
+			if m.filterFocus > 5 {
 				m.filterFocus = 0
 			}
 			return m, nil
 		case key.Matches(msg, m.keys.Left):
-			if m.adjustFilterSelection(-1) {
+			if changed, err := m.adjustFilterSelection(-1); err != nil {
+				m.statusLine = err.Error()
+				return m, nil
+			} else if changed {
 				return m, m.loadTasksCmd()
 			}
 			return m, nil
 		case key.Matches(msg, m.keys.Right):
-			if m.adjustFilterSelection(1) {
+			if changed, err := m.adjustFilterSelection(1); err != nil {
+				m.statusLine = err.Error()
+				return m, nil
+			} else if changed {
 				return m, m.loadTasksCmd()
 			}
 			return m, nil
@@ -1149,10 +1772,12 @@ func (m Model) renderFilterPanel(base string) string {
 	}
 
 	lines = append(lines,
-		row(0, "Status", m.statusFilterLabel()),
-		row(1, "Due", m.dueFilterLabel()),
-		row(2, "Priority", m.priorityFilterLabel()),
-		row(3, "Sort", m.sortModeLabel()),
+		row(0, "Workspace", m.workspaceName),
+		row(1, "Board", m.boardName),
+		row(2, "Status", m.statusFilterLabel()),
+		row(3, "Due", m.dueFilterLabel()),
+		row(4, "Priority", m.priorityFilterLabel()),
+		row(5, "Sort", m.sortModeLabel()),
 	)
 
 	panel := lipgloss.NewStyle().
@@ -1174,6 +1799,8 @@ func (m Model) keybindEntries() []keybindEntry {
 		{ID: "add_comment", Key: "c", Label: "Add comment"},
 		{ID: "search", Key: "/", Label: "Search"},
 		{ID: "open_filters", Key: "f", Label: "Open filter/sort panel"},
+		{ID: "open_workspaces", Key: "w", Label: "Open workspace switcher"},
+		{ID: "open_boards", Key: "b", Label: "Open board switcher"},
 		{ID: "toggle_details", Key: "d", Label: "Toggle details pane"},
 		{ID: "open_move", Key: "Enter", Label: "Open details / move in kanban"},
 		{ID: "move_task", Key: "m", Label: "Move task to next status"},
@@ -1365,6 +1992,12 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 	case "open_filters":
 		m.openFilterPanel()
 		return m, nil
+	case "open_workspaces":
+		m.openContextPanel(contextWorkspace)
+		return m, textinput.Blink
+	case "open_boards":
+		m.openContextPanel(contextBoard)
+		return m, textinput.Blink
 	case "clear_search":
 		if strings.TrimSpace(m.titleFilter) == "" {
 			return m, nil
@@ -1627,7 +2260,7 @@ func (m Model) renderFooter() string {
 		inputLine = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(m.textArea.View())
 	}
 
-	shortcuts := "?:keybinds f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
+	shortcuts := "?:keybinds w:workspaces b:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " x:clear-search"
 	}
@@ -1757,6 +2390,7 @@ func (m Model) tasksForColumn(columnID string) []domain.Task {
 func (m Model) loadTasksCmd() tea.Cmd {
 	filters := application.ListTaskFilters{
 		WorkspaceID: m.workspaceID,
+		BoardID:     m.boardID,
 		TitleQuery:  m.titleFilter,
 		ColumnID:    m.columnFilter,
 	}

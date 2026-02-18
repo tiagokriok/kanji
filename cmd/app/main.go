@@ -65,6 +65,7 @@ func run() error {
 	commentRepo := repositories.NewCommentRepository(adapter)
 	taskService := application.NewTaskService(taskRepo)
 	commentService := application.NewCommentService(commentRepo)
+	contextService := application.NewContextService(setupRepo)
 
 	if *seedOnly {
 		if err := seedSampleData(ctx, taskService, setup); err != nil {
@@ -74,7 +75,7 @@ func run() error {
 		return nil
 	}
 
-	model := ui.NewModel(taskService, commentService, setup)
+	model := ui.NewModel(taskService, commentService, contextService, setup)
 	program := tea.NewProgram(model, tea.WithAltScreen())
 	_, err = program.Run()
 	return err
