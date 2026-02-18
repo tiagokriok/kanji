@@ -42,6 +42,7 @@ func (m Model) renderListScreen() string {
 		right := m.renderDetailView(detailWidth, mainHeight)
 		center = lipgloss.JoinHorizontal(lipgloss.Top, left, strings.Repeat(" ", gap), right)
 	}
+	center = lipgloss.NewStyle().Width(containerWidth).Height(mainHeight).Render(center)
 
 	page := lipgloss.JoinVertical(lipgloss.Left, filterBar, center, footer)
 	return lipgloss.NewStyle().Padding(0, 1).Render(page)
@@ -63,7 +64,7 @@ func (m Model) renderListFilterBar(width int) string {
 }
 
 func (m Model) renderListView(width, height int) string {
-	panelContentWidth := boxContentWidth(width, 0, true)
+	panelContentWidth := boxContentWidth(width, 1, true)
 	panelContentHeight := boxContentHeight(height, true)
 
 	if len(m.tasks) == 0 {
@@ -76,12 +77,14 @@ func (m Model) renderListView(width, height int) string {
 		return lipgloss.NewStyle().
 			Width(panelContentWidth).
 			Height(panelContentHeight).
+			Padding(0, 1).
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("250")).
 			Render(empty)
 	}
 
-	innerWidth := max(12, panelContentWidth)
+	// Panel has horizontal padding (0,1), so table width must fit that inner area.
+	innerWidth := max(12, panelContentWidth-2)
 	visibleRows := max(2, panelContentHeight) // Includes table header row.
 	visibleTaskRows := max(1, visibleRows-1)
 
@@ -105,9 +108,10 @@ func (m Model) renderListView(width, height int) string {
 		priCellWidth          = priContentWidth + cellHorizontalPadding
 	)
 
-	fixedNonTaskWidth := statusCellWidth + dueCellWidth + priCellWidth
+	tableWidth := innerWidth
+	fixedTailWidth := statusCellWidth + dueCellWidth + priCellWidth
 	const tableGutterReserve = 4
-	taskColWidth := max(8, innerWidth-fixedNonTaskWidth-tableGutterReserve)
+	taskContentWidth := max(8, tableWidth-fixedTailWidth-tableGutterReserve)
 	rows := make([][]string, 0, len(m.tasks))
 	for _, task := range m.tasks {
 		column := "-"
@@ -119,7 +123,7 @@ func (m Model) renderListView(width, height int) string {
 			due = m.formatDueDate(*task.DueAt)
 		}
 		rows = append(rows, []string{
-			truncate(task.Title, taskColWidth),
+			truncate(task.Title, taskContentWidth),
 			truncate(column, statusContentWidth),
 			truncate(due, dueContentWidth),
 			fmt.Sprintf("p%d", task.Priority),
@@ -131,7 +135,15 @@ func (m Model) renderListView(width, height int) string {
 		Headers("Task", "Status", "Due", "Pri").
 		Rows(rows...).
 		Border(lipgloss.HiddenBorder()).
-		Width(innerWidth).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderColumn(false).
+		BorderRow(false).
+		BorderHeader(false).
+		Width(tableWidth).
+		Wrap(false).
 		Offset(offset).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			style := lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("252"))
@@ -154,7 +166,7 @@ func (m Model) renderListView(width, height int) string {
 
 			switch col {
 			case 0:
-				return style.Width(taskColWidth)
+				return style.MaxWidth(taskContentWidth)
 			case 1:
 				return style.Width(statusCellWidth)
 			case 2:
@@ -169,7 +181,7 @@ func (m Model) renderListView(width, height int) string {
 	return lipgloss.NewStyle().
 		Width(panelContentWidth).
 		Height(panelContentHeight).
-		Padding(0, 0).
+		Padding(0, 1).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("250")).
 		Render(t.String())
