@@ -2,9 +2,7 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	liptable "github.com/charmbracelet/lipgloss/table"
@@ -13,11 +11,10 @@ import (
 func (m Model) renderListScreen() string {
 	containerWidth := max(40, m.width-2)
 
-	topRow := m.renderListTopRow(containerWidth)
 	filterBar := m.renderListFilterBar(containerWidth)
 	footer := m.renderListFooter(containerWidth)
 
-	mainHeight := m.height - lipgloss.Height(topRow) - lipgloss.Height(filterBar) - lipgloss.Height(footer)
+	mainHeight := m.height - lipgloss.Height(filterBar) - lipgloss.Height(footer)
 	if mainHeight < 8 {
 		mainHeight = 8
 	}
@@ -46,35 +43,8 @@ func (m Model) renderListScreen() string {
 		center = lipgloss.JoinHorizontal(lipgloss.Top, left, strings.Repeat(" ", gap), right)
 	}
 
-	page := lipgloss.JoinVertical(lipgloss.Left, topRow, filterBar, center, footer)
+	page := lipgloss.JoinVertical(lipgloss.Left, filterBar, center, footer)
 	return lipgloss.NewStyle().Padding(0, 1).Render(page)
-}
-
-func (m Model) renderListTopRow(width int) string {
-	contentWidth := boxContentWidth(width, 1, false)
-	bar := lipgloss.NewStyle().
-		Width(contentWidth).
-		Padding(0, 1).
-		Foreground(lipgloss.Color("255"))
-
-	icon := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("195")).
-		Render("~")
-
-	user := os.Getenv("USER")
-	if strings.TrimSpace(user) == "" {
-		user = "there"
-	}
-	greeting := lipgloss.NewStyle().Foreground(lipgloss.Color("195")).Render("Hello, ")
-	name := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("191")).Render(user + "!")
-	left := fmt.Sprintf("%s  %s%s", icon, greeting, name)
-
-	clock := lipgloss.NewStyle().Foreground(lipgloss.Color("183")).Render(time.Now().Format("Mon Jan 2 15:04:05 MST"))
-	return bar.Render(lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		lipgloss.NewStyle().Width(max(1, width-28)).Render(left),
-		lipgloss.NewStyle().Width(28).Align(lipgloss.Right).Render(clock),
-	))
 }
 
 func (m Model) renderListFilterBar(width int) string {
