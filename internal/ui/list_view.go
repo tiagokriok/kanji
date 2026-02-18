@@ -36,10 +36,20 @@ func (m Model) renderListScreen() string {
 		detailWidth = 0
 	}
 
-	left := m.renderListView(mainWidth, mainHeight)
+	left := lipgloss.NewStyle().
+		Width(mainWidth).
+		Height(mainHeight).
+		MaxWidth(mainWidth).
+		MaxHeight(mainHeight).
+		Render(m.renderListView(mainWidth, mainHeight))
 	center := left
 	if detailWidth > 0 {
-		right := m.renderDetailView(detailWidth, mainHeight)
+		right := lipgloss.NewStyle().
+			Width(detailWidth).
+			Height(mainHeight).
+			MaxWidth(detailWidth).
+			MaxHeight(mainHeight).
+			Render(m.renderDetailView(detailWidth, mainHeight))
 		center = lipgloss.JoinHorizontal(lipgloss.Top, left, strings.Repeat(" ", gap), right)
 	}
 	center = lipgloss.NewStyle().Width(containerWidth).Height(mainHeight).Render(center)
