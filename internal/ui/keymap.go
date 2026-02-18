@@ -16,11 +16,13 @@ type keyMap struct {
 	AddComment      key.Binding
 	Search          key.Binding
 	ClearSearch     key.Binding
+	ShowFilters     key.Binding
 	ShowKeybinds    key.Binding
 	ToggleView      key.Binding
 	MoveTask        key.Binding
 	CycleStatus     key.Binding
 	ToggleDueSoon   key.Binding
+	CycleSort       key.Binding
 	Confirm         key.Binding
 	Cancel          key.Binding
 }
@@ -40,11 +42,13 @@ func newKeyMap() keyMap {
 		AddComment:      key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "add comment")),
 		Search:          key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 		ClearSearch:     key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "clear search")),
+		ShowFilters:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "filters")),
 		ShowKeybinds:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keybinds")),
 		ToggleView:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch view")),
 		MoveTask:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move task")),
 		CycleStatus:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "cycle column filter")),
-		ToggleDueSoon:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "due soon")),
+		ToggleDueSoon:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "cycle due filter")),
+		CycleSort:       key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "cycle sort")),
 		Confirm:         key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 		Cancel:          key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
 	}

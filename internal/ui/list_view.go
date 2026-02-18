@@ -60,7 +60,16 @@ func (m Model) renderListScreen() string {
 
 func (m Model) renderListFilterBar(width int) string {
 	contentWidth := boxContentWidth(width, 1, true)
-	content := "View: List | Order: Priority"
+	filters := []string{
+		fmt.Sprintf("Status: %s", m.statusFilterLabel()),
+		fmt.Sprintf("Due: %s", m.dueFilterLabel()),
+	}
+	if m.priorityFilter >= 0 {
+		filters = append(filters, fmt.Sprintf("Priority: p%d", m.priorityFilter))
+	}
+	filterLabel := strings.Join(filters, " + ")
+
+	content := fmt.Sprintf("View: List | Sort: %s | Filter: %s", m.sortModeLabel(), filterLabel)
 	if strings.TrimSpace(m.titleFilter) != "" {
 		content = fmt.Sprintf("%s | Search: %s", content, m.titleFilter)
 	}
@@ -199,7 +208,7 @@ func (m Model) renderListView(width, height int) string {
 
 func (m Model) renderListFooter(width int) string {
 	contentWidth := boxContentWidth(width, 1, true)
-	shortcuts := "?: Keybinds | N: Create | /: Search | Enter: Open/Move | Q: Quit"
+	shortcuts := "?: Keybinds | F: Filter/Sort | S: Status | Z: Due | O: Sort | N: Create | /: Search | Enter: Open/Move | Q: Quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " | X: Clear search"
 	}

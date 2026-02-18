@@ -68,6 +68,25 @@ type taskForm struct {
 	descriptionFull string
 }
 
+type dueFilterMode int
+
+const (
+	dueFilterAny dueFilterMode = iota
+	dueFilterSoon
+	dueFilterOverdue
+	dueFilterNoDate
+)
+
+type taskSortMode int
+
+const (
+	sortByPriority taskSortMode = iota
+	sortByDueDate
+	sortByTitle
+	sortByUpdated
+	sortByCreated
+)
+
 func (f *taskForm) fields() []*textinput.Model {
 	return []*textinput.Model{&f.title, &f.description, &f.dueDate, &f.priority, &f.status}
 }
@@ -162,25 +181,29 @@ type Model struct {
 	tasks    []domain.Task
 	comments []domain.Comment
 
-	selected      int
-	activeColumn  int
-	kanbanRow     int
-	columnFilter  string
-	filterIndex   int
-	titleFilter   string
-	dueSoonFilter bool
+	selected       int
+	activeColumn   int
+	kanbanRow      int
+	columnFilter   string
+	filterIndex    int
+	priorityFilter int
+	titleFilter    string
+	dueFilter      dueFilterMode
+	sortMode       taskSortMode
 
 	viewMode     viewMode
 	showDetails  bool
 	inputMode    inputMode
 	taskForm     *taskForm
 	showKeybinds bool
+	showFilters  bool
 
 	textInput textinput.Model
 	textArea  textarea.Model
 
 	keyFilter   textinput.Model
 	keySelected int
+	filterFocus int
 
 	statusLine string
 	err        error
@@ -224,6 +247,9 @@ func NewModel(taskService *application.TaskService, commentService *application.
 		boardName:      setup.Board.Name,
 		columns:        cols,
 		filterIndex:    -1,
+		priorityFilter: -1,
+		dueFilter:      dueFilterAny,
+		sortMode:       sortByPriority,
 		viewMode:       viewList,
 		showDetails:    true,
 		textInput:      ti,
@@ -240,6 +266,9 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.showKeybinds {
 		return m.updateKeybindPanel(msg)
+	}
+	if m.showFilters {
+		return m.updateFilterPanel(msg)
 	}
 	if m.inputMode != inputNone {
 		return m.updateInputMode(msg)
@@ -260,8 +289,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = msg.err.Error()
 			return m, nil
 		}
-		m.sortTasksByPriority(msg.tasks)
-		m.tasks = msg.tasks
+		m.tasks = m.applyActiveFilters(msg.tasks)
+		m.sortTasks(m.tasks)
 		m.ensureSelection()
 		if m.showDetails {
 			if task, ok := m.currentTask(); ok {
@@ -293,6 +322,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.ShowKeybinds):
 			m.openKeybindPanel()
 			return m, textinput.Blink
+		case key.Matches(msg, m.keys.ShowFilters):
+			m.openFilterPanel()
+			return m, nil
 		case key.Matches(msg, m.keys.ToggleView):
 			if m.viewMode == viewList {
 				m.viewMode = viewKanban
@@ -362,7 +394,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cycleColumnFilter()
 			return m, m.loadTasksCmd()
 		case key.Matches(msg, m.keys.ToggleDueSoon):
-			m.dueSoonFilter = !m.dueSoonFilter
+			m.cycleDueFilter()
+			return m, m.loadTasksCmd()
+		case key.Matches(msg, m.keys.CycleSort):
+			m.cycleSortMode()
 			return m, m.loadTasksCmd()
 		case key.Matches(msg, m.keys.Up):
 			m.moveUp()
@@ -469,6 +504,9 @@ func (m Model) View() string {
 
 	if m.showKeybinds {
 		return m.renderKeybindPanel(base)
+	}
+	if m.showFilters {
+		return m.renderFilterPanel(base)
 	}
 	if m.inputMode == inputTaskForm && m.taskForm != nil {
 		return m.renderTaskFormPanel(base)
@@ -882,6 +920,220 @@ func (m *Model) closeKeybindPanel() {
 	m.keyFilter.Blur()
 }
 
+func (m *Model) openFilterPanel() {
+	m.showFilters = true
+	m.filterFocus = 0
+}
+
+func (m *Model) closeFilterPanel() {
+	m.showFilters = false
+}
+
+func (m Model) statusFilterLabel() string {
+	if m.filterIndex >= 0 && m.filterIndex < len(m.columns) {
+		return m.columns[m.filterIndex].Name
+	}
+	if strings.TrimSpace(m.columnFilter) != "" {
+		return m.columnName(m.columnFilter)
+	}
+	return "All"
+}
+
+func (m Model) dueFilterLabel() string {
+	switch m.dueFilter {
+	case dueFilterSoon:
+		return "Due in 7d"
+	case dueFilterOverdue:
+		return "Overdue"
+	case dueFilterNoDate:
+		return "No due date"
+	default:
+		return "Any"
+	}
+}
+
+func (m Model) priorityFilterLabel() string {
+	switch m.priorityFilter {
+	case 0:
+		return "Critical (0)"
+	case 1:
+		return "Urgent (1)"
+	case 2:
+		return "High (2)"
+	case 3:
+		return "Medium (3)"
+	case 4:
+		return "Low (4)"
+	case 5:
+		return "None (5)"
+	default:
+		return "All"
+	}
+}
+
+func (m Model) sortModeLabel() string {
+	switch m.sortMode {
+	case sortByDueDate:
+		return "Due date"
+	case sortByTitle:
+		return "Title"
+	case sortByUpdated:
+		return "Updated"
+	case sortByCreated:
+		return "Created"
+	default:
+		return "Priority"
+	}
+}
+
+func (m *Model) setStatusFilterByIndex(index int) {
+	m.filterIndex = index
+	if index < 0 || index >= len(m.columns) {
+		m.filterIndex = -1
+		m.columnFilter = ""
+		return
+	}
+	m.columnFilter = m.columns[index].ID
+}
+
+func (m *Model) cycleDueFilter() {
+	next := int(m.dueFilter) + 1
+	if next > int(dueFilterNoDate) {
+		next = int(dueFilterAny)
+	}
+	m.dueFilter = dueFilterMode(next)
+}
+
+func (m *Model) cycleSortMode() {
+	next := int(m.sortMode) + 1
+	if next > int(sortByCreated) {
+		next = int(sortByPriority)
+	}
+	m.sortMode = taskSortMode(next)
+}
+
+func (m *Model) adjustFilterSelection(delta int) bool {
+	changed := false
+	switch m.filterFocus {
+	case 0: // status
+		total := len(m.columns) + 1 // + All
+		if total <= 0 {
+			return false
+		}
+		current := m.filterIndex + 1
+		next := (current + delta + total) % total
+		m.setStatusFilterByIndex(next - 1)
+		changed = true
+	case 1: // due
+		total := int(dueFilterNoDate) + 1
+		next := (int(m.dueFilter) + delta + total) % total
+		m.dueFilter = dueFilterMode(next)
+		changed = true
+	case 2: // priority
+		total := 7 // all + 0..5
+		current := m.priorityFilter + 1
+		next := (current + delta + total) % total
+		m.priorityFilter = next - 1
+		changed = true
+	case 3: // sort
+		total := int(sortByCreated) + 1
+		next := (int(m.sortMode) + delta + total) % total
+		m.sortMode = taskSortMode(next)
+		changed = true
+	}
+	return changed
+}
+
+func (m Model) updateFilterPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.ShowFilters):
+			m.closeFilterPanel()
+			return m, nil
+		case key.Matches(msg, m.keys.Up):
+			m.filterFocus--
+			if m.filterFocus < 0 {
+				m.filterFocus = 3
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.Down):
+			m.filterFocus++
+			if m.filterFocus > 3 {
+				m.filterFocus = 0
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.Left):
+			if m.adjustFilterSelection(-1) {
+				return m, m.loadTasksCmd()
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.Right):
+			if m.adjustFilterSelection(1) {
+				return m, m.loadTasksCmd()
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.Confirm):
+			m.closeFilterPanel()
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+func (m Model) renderFilterPanel(base string) string {
+	_ = base
+	panelWidth := m.width * 2 / 3
+	if panelWidth < 56 {
+		panelWidth = 56
+	}
+	if panelWidth > m.width-2 {
+		panelWidth = max(20, m.width-2)
+	}
+	panelHeight := 12
+	if panelHeight > m.height-2 {
+		panelHeight = max(8, m.height-2)
+	}
+
+	contentWidth := boxContentWidth(panelWidth, 1, true)
+	lines := []string{
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("151")).Render("Filter & Sort"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("↑/↓ select row | ←/→ change value | Enter/Esc close"),
+		"",
+	}
+
+	row := func(index int, label, value string) string {
+		left := lipgloss.NewStyle().Width(12).Foreground(lipgloss.Color("246")).Render(label)
+		right := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(value)
+		line := left + " " + right
+		if m.filterFocus == index {
+			line = lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Render(line)
+		}
+		return line
+	}
+
+	lines = append(lines,
+		row(0, "Status", m.statusFilterLabel()),
+		row(1, "Due", m.dueFilterLabel()),
+		row(2, "Priority", m.priorityFilterLabel()),
+		row(3, "Sort", m.sortModeLabel()),
+	)
+
+	panel := lipgloss.NewStyle().
+		Width(contentWidth).
+		Height(boxContentHeight(panelHeight, true)).
+		Padding(0, 1).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("151")).
+		Render(strings.Join(lines, "\n"))
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+}
+
 func (m Model) keybindEntries() []keybindEntry {
 	entries := []keybindEntry{
 		{ID: "new_task", Key: "n", Label: "Create task"},
@@ -889,12 +1141,14 @@ func (m Model) keybindEntries() []keybindEntry {
 		{ID: "edit_description", Key: "E", Label: "Edit description"},
 		{ID: "add_comment", Key: "c", Label: "Add comment"},
 		{ID: "search", Key: "/", Label: "Search"},
+		{ID: "open_filters", Key: "f", Label: "Open filter/sort panel"},
 		{ID: "toggle_details", Key: "d", Label: "Toggle details pane"},
 		{ID: "open_move", Key: "Enter", Label: "Open details / move in kanban"},
 		{ID: "move_task", Key: "m", Label: "Move task to next status"},
 		{ID: "toggle_view", Key: "Tab", Label: "Switch list/kanban"},
 		{ID: "cycle_status", Key: "s", Label: "Cycle status filter"},
-		{ID: "toggle_due_soon", Key: "z", Label: "Toggle due soon filter"},
+		{ID: "cycle_due_filter", Key: "z", Label: "Cycle due filter"},
+		{ID: "cycle_sort", Key: "o", Label: "Cycle sort mode"},
 		{ID: "move_up", Key: "↑", Label: "Move selection up"},
 		{ID: "move_down", Key: "↓", Label: "Move selection down"},
 		{ID: "move_left", Key: "←", Label: "Move left (kanban)"},
@@ -1076,6 +1330,9 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 		m.textInput.Focus()
 		m.statusLine = "Search by title"
 		return m, textinput.Blink
+	case "open_filters":
+		m.openFilterPanel()
+		return m, nil
 	case "clear_search":
 		if strings.TrimSpace(m.titleFilter) == "" {
 			return m, nil
@@ -1116,8 +1373,11 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 	case "cycle_status":
 		m.cycleColumnFilter()
 		return m, m.loadTasksCmd()
-	case "toggle_due_soon":
-		m.dueSoonFilter = !m.dueSoonFilter
+	case "cycle_due_filter":
+		m.cycleDueFilter()
+		return m, m.loadTasksCmd()
+	case "cycle_sort":
+		m.cycleSortMode()
 		return m, m.loadTasksCmd()
 	case "move_up":
 		m.moveUp()
@@ -1307,20 +1567,16 @@ func (m Model) renderHeader() string {
 	if m.viewMode == viewKanban {
 		viewLabel = "Kanban"
 	}
-	filterLabel := "all"
-	if m.filterIndex >= 0 && m.filterIndex < len(m.columns) {
-		filterLabel = m.columns[m.filterIndex].Name
-	}
-	dueLabel := "off"
-	if m.dueSoonFilter {
-		dueLabel = "7d"
+	filterParts := []string{fmt.Sprintf("status:%s", m.statusFilterLabel()), fmt.Sprintf("due:%s", strings.ToLower(m.dueFilterLabel()))}
+	if m.priorityFilter >= 0 {
+		filterParts = append(filterParts, fmt.Sprintf("priority:p%d", m.priorityFilter))
 	}
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229"))
 	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
 
 	left := headerStyle.Render(fmt.Sprintf("%s / %s", m.workspaceName, m.boardName))
-	right := metaStyle.Render(fmt.Sprintf("view:%s  filter:%s  due:%s  search:%q", viewLabel, filterLabel, dueLabel, m.titleFilter))
+	right := metaStyle.Render(fmt.Sprintf("view:%s  sort:%s  filter:%s  search:%q", viewLabel, strings.ToLower(m.sortModeLabel()), strings.Join(filterParts, ","), m.titleFilter))
 	if m.width > 20 {
 		return lipgloss.JoinHorizontal(lipgloss.Top,
 			lipgloss.NewStyle().Width(m.width/2).Render(left),
@@ -1339,7 +1595,7 @@ func (m Model) renderFooter() string {
 		inputLine = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(m.textArea.View())
 	}
 
-	shortcuts := "?:keybinds n:new /:search enter:open/move q:quit"
+	shortcuts := "?:keybinds f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " x:clear-search"
 	}
@@ -1423,17 +1679,10 @@ func (m *Model) moveDown() {
 
 func (m *Model) cycleColumnFilter() {
 	if len(m.columns) == 0 {
-		m.filterIndex = -1
-		m.columnFilter = ""
+		m.setStatusFilterByIndex(-1)
 		return
 	}
-	m.filterIndex++
-	if m.filterIndex >= len(m.columns) {
-		m.filterIndex = -1
-		m.columnFilter = ""
-		return
-	}
-	m.columnFilter = m.columns[m.filterIndex].ID
+	m.setStatusFilterByIndex(m.filterIndex + 1)
 }
 
 func (m Model) currentTask() (domain.Task, bool) {
@@ -1479,9 +1728,6 @@ func (m Model) loadTasksCmd() tea.Cmd {
 		TitleQuery:  m.titleFilter,
 		ColumnID:    m.columnFilter,
 	}
-	if m.dueSoonFilter {
-		filters.DueSoonDays = 7
-	}
 	service := m.taskService
 	return func() tea.Msg {
 		tasks, err := service.ListTasks(context.Background(), filters)
@@ -1494,6 +1740,82 @@ func (m Model) loadCommentsCmd(taskID string) tea.Cmd {
 	return func() tea.Msg {
 		comments, err := service.ListComments(context.Background(), taskID)
 		return commentsLoadedMsg{comments: comments, err: err}
+	}
+}
+
+func (m Model) applyActiveFilters(tasks []domain.Task) []domain.Task {
+	if len(tasks) == 0 {
+		return tasks
+	}
+	now := time.Now().UTC()
+	soonLimit := now.AddDate(0, 0, 7)
+	filtered := make([]domain.Task, 0, len(tasks))
+	for _, task := range tasks {
+		if m.columnFilter != "" {
+			if task.ColumnID == nil || *task.ColumnID != m.columnFilter {
+				continue
+			}
+		}
+		if m.priorityFilter >= 0 && normalizePriority(task.Priority) != m.priorityFilter {
+			continue
+		}
+		switch m.dueFilter {
+		case dueFilterSoon:
+			if task.DueAt == nil {
+				continue
+			}
+			due := task.DueAt.UTC()
+			if due.Before(now) || due.After(soonLimit) {
+				continue
+			}
+		case dueFilterOverdue:
+			if task.DueAt == nil || !task.DueAt.UTC().Before(now) {
+				continue
+			}
+		case dueFilterNoDate:
+			if task.DueAt != nil {
+				continue
+			}
+		}
+		filtered = append(filtered, task)
+	}
+	return filtered
+}
+
+func (m *Model) sortTasks(tasks []domain.Task) {
+	switch m.sortMode {
+	case sortByDueDate:
+		sort.SliceStable(tasks, func(i, j int) bool {
+			if tasks[i].DueAt != nil && tasks[j].DueAt == nil {
+				return true
+			}
+			if tasks[i].DueAt == nil && tasks[j].DueAt != nil {
+				return false
+			}
+			if tasks[i].DueAt != nil && tasks[j].DueAt != nil && !tasks[i].DueAt.Equal(*tasks[j].DueAt) {
+				return tasks[i].DueAt.Before(*tasks[j].DueAt)
+			}
+			return tasks[i].UpdatedAt.After(tasks[j].UpdatedAt)
+		})
+	case sortByTitle:
+		sort.SliceStable(tasks, func(i, j int) bool {
+			ti := strings.ToLower(strings.TrimSpace(tasks[i].Title))
+			tj := strings.ToLower(strings.TrimSpace(tasks[j].Title))
+			if ti != tj {
+				return ti < tj
+			}
+			return tasks[i].UpdatedAt.After(tasks[j].UpdatedAt)
+		})
+	case sortByUpdated:
+		sort.SliceStable(tasks, func(i, j int) bool {
+			return tasks[i].UpdatedAt.After(tasks[j].UpdatedAt)
+		})
+	case sortByCreated:
+		sort.SliceStable(tasks, func(i, j int) bool {
+			return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
+		})
+	default:
+		m.sortTasksByPriority(tasks)
 	}
 }
 
