@@ -523,7 +523,7 @@ func (m *Model) loadCurrentTaskFormStep() {
 		m.textInput.SetValue(m.taskForm.description)
 		m.statusLine = suffix + "description"
 	case taskFormStepPriority:
-		m.textInput.Placeholder = "Priority (integer, e.g. 0,1,2)"
+		m.textInput.Placeholder = "Priority (0-5)"
 		m.textInput.SetValue(m.taskForm.priority)
 		m.statusLine = suffix + "priority"
 	case taskFormStepStatus:
@@ -543,14 +543,17 @@ func (m Model) submitTaskFormCmd() (tea.Cmd, error) {
 		return nil, fmt.Errorf("title is required")
 	}
 
-	priority := 0
 	priorityRaw := strings.TrimSpace(m.taskForm.priority)
-	if priorityRaw != "" {
-		parsed, err := strconv.Atoi(priorityRaw)
-		if err != nil {
-			return nil, fmt.Errorf("priority must be an integer")
-		}
-		priority = parsed
+	if priorityRaw == "" {
+		return nil, fmt.Errorf("priority is required (0-5)")
+	}
+
+	priority, err := strconv.Atoi(priorityRaw)
+	if err != nil {
+		return nil, fmt.Errorf("priority must be an integer between 0 and 5")
+	}
+	if priority < 0 || priority > 5 {
+		return nil, fmt.Errorf("priority must be between 0 and 5")
 	}
 
 	columnID, status := m.resolveStatusInput(strings.TrimSpace(m.taskForm.status), m.taskForm.mode)
@@ -887,8 +890,10 @@ func (m Model) loadCommentsCmd(taskID string) tea.Cmd {
 
 func (m *Model) sortTasksByPriority(tasks []domain.Task) {
 	sort.SliceStable(tasks, func(i, j int) bool {
-		if tasks[i].Priority != tasks[j].Priority {
-			return tasks[i].Priority > tasks[j].Priority
+		pi := normalizePriority(tasks[i].Priority)
+		pj := normalizePriority(tasks[j].Priority)
+		if pi != pj {
+			return pi < pj
 		}
 		if tasks[i].DueAt != nil && tasks[j].DueAt == nil {
 			return true
@@ -901,6 +906,13 @@ func (m *Model) sortTasksByPriority(tasks []domain.Task) {
 		}
 		return tasks[i].UpdatedAt.After(tasks[j].UpdatedAt)
 	})
+}
+
+func normalizePriority(priority int) int {
+	if priority < 0 || priority > 5 {
+		return 6
+	}
+	return priority
 }
 
 func max(a, b int) int {

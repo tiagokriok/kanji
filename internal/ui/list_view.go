@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	liptable "github.com/charmbracelet/lipgloss/table"
 )
 
 func (m Model) renderListScreen() string {
@@ -90,15 +91,6 @@ func (m Model) renderListFilterBar(width int) string {
 }
 
 func (m Model) renderListView(width, height int) string {
-	rowStyle := lipgloss.NewStyle().
-		Padding(0, 1).
-		Foreground(lipgloss.Color("252"))
-	selectedStyle := lipgloss.NewStyle().
-		Padding(0, 1).
-		Foreground(lipgloss.Color("230")).
-		Background(lipgloss.Color("62"))
-
-	lines := make([]string, 0, len(m.tasks))
 	if len(m.tasks) == 0 {
 		empty := lipgloss.NewStyle().
 			Width(max(1, width-4)).
@@ -114,7 +106,22 @@ func (m Model) renderListView(width, height int) string {
 			Render(empty)
 	}
 
-	for i, task := range m.tasks {
+	innerWidth := max(12, width-4)
+	visibleRows := max(2, height-4) // Includes table header row.
+	visibleTaskRows := max(1, visibleRows-1)
+
+	offset := 0
+	if m.selected >= visibleTaskRows {
+		offset = m.selected - visibleTaskRows + 1
+	}
+	maxOffset := max(0, len(m.tasks)-visibleTaskRows)
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+
+	taskColWidth := max(16, innerWidth-31)
+	rows := make([][]string, 0, len(m.tasks))
+	for _, task := range m.tasks {
 		column := "-"
 		if task.ColumnID != nil {
 			column = m.columnName(*task.ColumnID)
@@ -123,23 +130,41 @@ func (m Model) renderListView(width, height int) string {
 		if task.DueAt != nil {
 			due = task.DueAt.Format("2006-01-02")
 		}
-		priority := fmt.Sprintf("p%d", task.Priority)
-		label := truncate(fmt.Sprintf("%s  [%s]  due:%s  %s", task.Title, column, due, priority), max(12, width-8))
-		if i == m.selected && m.viewMode == viewList {
-			lines = append(lines, selectedStyle.Render(label))
-		} else {
-			lines = append(lines, rowStyle.Render(label))
-		}
+		rows = append(rows, []string{
+			truncate(task.Title, taskColWidth),
+			truncate(column, 12),
+			truncate(due, 10),
+			fmt.Sprintf("p%d", task.Priority),
+		})
 	}
 
-	if len(lines) > height {
-		start := 0
-		if m.selected >= height-2 {
-			start = m.selected - (height - 3)
-		}
-		end := min(len(lines), start+height)
-		lines = lines[start:end]
-	}
+	selectedTableRow := m.selected - offset
+	t := liptable.New().
+		Headers("Task", "Status", "Due", "Pri").
+		Rows(rows...).
+		Border(lipgloss.HiddenBorder()).
+		Width(innerWidth).
+		Offset(offset).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			style := lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("252"))
+			if row == liptable.HeaderRow {
+				style = lipgloss.NewStyle().Padding(0, 1).Bold(true).Foreground(lipgloss.Color("245"))
+			} else if row == selectedTableRow {
+				style = lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62"))
+			}
+			switch col {
+			case 0:
+				return style.MaxWidth(taskColWidth)
+			case 1:
+				return style.Width(12)
+			case 2:
+				return style.Width(10)
+			case 3:
+				return style.Width(4)
+			default:
+				return style
+			}
+		})
 
 	return lipgloss.NewStyle().
 		Width(width).
@@ -147,7 +172,7 @@ func (m Model) renderListView(width, height int) string {
 		Padding(0, 0).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("250")).
-		Render(strings.Join(lines, "\n"))
+		Render(t.String())
 }
 
 func (m Model) renderListFooter(width int) string {
@@ -210,13 +235,6 @@ func (m Model) columnName(columnID string) string {
 		}
 	}
 	return columnID
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func truncate(input string, maxLen int) string {
