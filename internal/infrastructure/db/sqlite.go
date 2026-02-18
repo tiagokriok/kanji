@@ -72,6 +72,7 @@ func (a *SQLiteAdapter) Close() error {
 
 func RunMigrations(ctx context.Context, db *sql.DB) error {
 	goose.SetBaseFS(migrationsFS)
+	goose.SetLogger(goose.NopLogger())
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		return fmt.Errorf("set goose dialect: %w", err)
 	}
