@@ -9,9 +9,11 @@ import (
 )
 
 func (m Model) renderDetailView(width, height int) string {
+	contentWidth := boxContentWidth(width, 1, true)
+	contentHeight := boxContentHeight(height, true)
 	panelStyle := lipgloss.NewStyle().
-		Width(width).
-		Height(height).
+		Width(contentWidth).
+		Height(contentHeight).
 		Padding(0, 1).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("250"))

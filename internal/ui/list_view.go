@@ -51,8 +51,9 @@ func (m Model) renderListScreen() string {
 }
 
 func (m Model) renderListTopRow(width int) string {
+	contentWidth := boxContentWidth(width, 1, false)
 	bar := lipgloss.NewStyle().
-		Width(width).
+		Width(contentWidth).
 		Padding(0, 1).
 		Foreground(lipgloss.Color("255"))
 
@@ -77,12 +78,13 @@ func (m Model) renderListTopRow(width int) string {
 }
 
 func (m Model) renderListFilterBar(width int) string {
+	contentWidth := boxContentWidth(width, 1, true)
 	content := "View: List | Order: Priority"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		content = fmt.Sprintf("%s | Search: %s", content, m.titleFilter)
 	}
 	return lipgloss.NewStyle().
-		Width(width).
+		Width(contentWidth).
 		Padding(0, 1).
 		Foreground(lipgloss.Color("253")).
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -91,23 +93,26 @@ func (m Model) renderListFilterBar(width int) string {
 }
 
 func (m Model) renderListView(width, height int) string {
+	panelContentWidth := boxContentWidth(width, 0, true)
+	panelContentHeight := boxContentHeight(height, true)
+
 	if len(m.tasks) == 0 {
 		empty := lipgloss.NewStyle().
-			Width(max(1, width-4)).
-			Height(max(1, height-4)).
+			Width(panelContentWidth).
+			Height(panelContentHeight).
 			Align(lipgloss.Center, lipgloss.Center).
 			Foreground(lipgloss.Color("245")).
 			Render("No tasks yet.\nPress n to create one.")
 		return lipgloss.NewStyle().
-			Width(width).
-			Height(height).
+			Width(panelContentWidth).
+			Height(panelContentHeight).
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("250")).
 			Render(empty)
 	}
 
-	innerWidth := max(12, width-4)
-	visibleRows := max(2, height-4) // Includes table header row.
+	innerWidth := max(12, panelContentWidth)
+	visibleRows := max(2, panelContentHeight) // Includes table header row.
 	visibleTaskRows := max(1, visibleRows-1)
 
 	offset := 0
@@ -179,8 +184,8 @@ func (m Model) renderListView(width, height int) string {
 		})
 
 	return lipgloss.NewStyle().
-		Width(width).
-		Height(height).
+		Width(panelContentWidth).
+		Height(panelContentHeight).
 		Padding(0, 0).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("250")).
@@ -188,9 +193,10 @@ func (m Model) renderListView(width, height int) string {
 }
 
 func (m Model) renderListFooter(width int) string {
+	contentWidth := boxContentWidth(width, 1, true)
 	shortcuts := "N: Create task | E: Edit task | D: Toggle details | /: Search | Enter: Open/Move | j k: Up/Down | h l: Left/Right"
 	helpLine := lipgloss.NewStyle().
-		Width(width).
+		Width(contentWidth).
 		Padding(0, 1).
 		Foreground(lipgloss.Color("248")).
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -200,7 +206,7 @@ func (m Model) renderListFooter(width int) string {
 	lines := []string{}
 	if strings.TrimSpace(m.statusLine) != "" {
 		statusLine := lipgloss.NewStyle().
-			Width(width).
+			Width(contentWidth).
 			Padding(0, 1).
 			Foreground(lipgloss.Color("222")).
 			BorderStyle(lipgloss.RoundedBorder()).
@@ -218,10 +224,11 @@ func (m Model) renderListFooter(width int) string {
 }
 
 func (m Model) renderInlineInput(width int) string {
+	contentWidth := boxContentWidth(width, 1, true)
 	switch m.inputMode {
 	case inputSearch, inputAddComment, inputTaskForm:
 		return lipgloss.NewStyle().
-			Width(width).
+			Width(contentWidth).
 			Padding(0, 1).
 			Foreground(lipgloss.Color("221")).
 			BorderStyle(lipgloss.RoundedBorder()).
@@ -229,7 +236,7 @@ func (m Model) renderInlineInput(width int) string {
 			Render(m.textInput.View())
 	case inputEditDescription:
 		return lipgloss.NewStyle().
-			Width(width).
+			Width(contentWidth).
 			Padding(0, 1).
 			Foreground(lipgloss.Color("221")).
 			BorderStyle(lipgloss.RoundedBorder()).
@@ -257,6 +264,28 @@ func truncate(input string, maxLen int) string {
 		return input[:maxLen]
 	}
 	return input[:maxLen-3] + "..."
+}
+
+func boxContentWidth(outerWidth, horizontalPadding int, bordered bool) int {
+	width := outerWidth - (horizontalPadding * 2)
+	if bordered {
+		width -= 2
+	}
+	if width < 1 {
+		return 1
+	}
+	return width
+}
+
+func boxContentHeight(outerHeight int, bordered bool) int {
+	height := outerHeight
+	if bordered {
+		height -= 2
+	}
+	if height < 1 {
+		return 1
+	}
+	return height
 }
 
 func priorityColor(priority int) lipgloss.Color {
