@@ -22,12 +22,18 @@ func (m Model) renderDetailView(width, height int) string {
 
 	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("213")).Render(task.Title)
 	meta := []string{}
-	meta = append(meta, fmt.Sprintf("Priority: %d", task.Priority))
+	priorityValue := lipgloss.NewStyle().
+		Foreground(priorityColor(normalizePriority(task.Priority))).
+		Bold(true).
+		Render(fmt.Sprintf("%d", task.Priority))
+	meta = append(meta, fmt.Sprintf("Priority: %s", priorityValue))
 	if task.DueAt != nil {
 		meta = append(meta, fmt.Sprintf("Due: %s", task.DueAt.Format(time.RFC3339)))
 	}
 	if task.ColumnID != nil {
-		meta = append(meta, fmt.Sprintf("Column: %s", m.columnName(*task.ColumnID)))
+		meta = append(meta, fmt.Sprintf("Status: %s", m.columnName(*task.ColumnID)))
+	} else if task.Status != nil && strings.TrimSpace(*task.Status) != "" {
+		meta = append(meta, fmt.Sprintf("Status: %s", *task.Status))
 	}
 	metaLine := lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render(strings.Join(meta, " | "))
 
