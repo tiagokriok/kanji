@@ -69,17 +69,88 @@ func (m Model) renderListFilterBar(width int) string {
 	}
 	filterLabel := strings.Join(filters, " + ")
 
-	content := fmt.Sprintf("View: List | Workspace: %s | Board: %s | Sort: %s | Filter: %s", m.workspaceName, m.boardName, m.sortModeLabel(), filterLabel)
+	content := fmt.Sprintf("View: List | Workspace: %s | Sort: %s | Filter: %s", m.workspaceName, m.sortModeLabel(), filterLabel)
 	if strings.TrimSpace(m.titleFilter) != "" {
 		content = fmt.Sprintf("%s | Search: %s", content, m.titleFilter)
 	}
-	return lipgloss.NewStyle().
+	panel := lipgloss.NewStyle().
 		Width(contentWidth).
 		Padding(0, 1).
 		Foreground(lipgloss.Color("253")).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("250")).
 		Render(content)
+	return withTopBorderLabel(panel, m.renderBoardStrip())
+}
+
+func (m Model) renderBoardStrip() string {
+	if len(m.boards) == 0 {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render("-")
+	}
+
+	current := boardIndexByID(m.boards, m.boardID)
+	if current < 0 {
+		current = 0
+	}
+	prev := (current - 1 + len(m.boards)) % len(m.boards)
+	next := (current + 1) % len(m.boards)
+
+	prevName := truncate(strings.TrimSpace(m.boards[prev].Name), 20)
+	currName := truncate(strings.TrimSpace(m.boards[current].Name), 20)
+	nextName := truncate(strings.TrimSpace(m.boards[next].Name), 20)
+	if prevName == "" {
+		prevName = "-"
+	}
+	if currName == "" {
+		currName = "-"
+	}
+	if nextName == "" {
+		nextName = "-"
+	}
+
+	prevStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	currStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114")).Bold(true)
+	nextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+
+	return fmt.Sprintf("%s | %s | %s",
+		prevStyle.Render(prevName),
+		currStyle.Render(currName),
+		nextStyle.Render(nextName),
+	)
+}
+
+func withTopBorderLabel(panel, label string) string {
+	if strings.TrimSpace(label) == "" {
+		return panel
+	}
+
+	lines := strings.Split(panel, "\n")
+	if len(lines) == 0 {
+		return panel
+	}
+
+	panelWidth := lipgloss.Width(lines[0])
+	if panelWidth < 6 {
+		return panel
+	}
+
+	innerWidth := panelWidth - 2 // between corner glyphs
+	labelText := " " + strings.TrimSpace(label) + " "
+	labelWidth := lipgloss.Width(labelText)
+	// Keep at least one line segment after the label before top-right corner.
+	if labelWidth >= innerWidth {
+		return panel
+	}
+
+	fillWidth := innerWidth - 1 - labelWidth
+	if fillWidth < 0 {
+		fillWidth = 0
+	}
+
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+	topLine := borderStyle.Render("╭─") + labelText + borderStyle.Render(strings.Repeat("─", fillWidth)+"╮")
+	lines[0] = topLine
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderListView(width, height int) string {
@@ -265,7 +336,7 @@ func withBottomCounter(panel, counter string) string {
 
 func (m Model) renderListFooter(width int) string {
 	contentWidth := boxContentWidth(width, 1, true)
-	shortcuts := "?: Keybinds | W: Workspaces | B: Boards | F: Filter/Sort | S: Status | Z: Due | O: Sort | N: Create | /: Search | Enter: Open/Move | Q: Quit"
+	shortcuts := "?: Keybinds | W: Workspaces | [: Prev board | ]: Next board | F: Filter/Sort | S: Status | Z: Due | O: Sort | N: Create | /: Search | Enter: Open/Move | Q: Quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " | X: Clear search"
 	}

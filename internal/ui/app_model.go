@@ -375,9 +375,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.OpenWorkspace):
 			m.openContextPanel(contextWorkspace)
 			return m, textinput.Blink
-		case key.Matches(msg, m.keys.OpenBoard):
-			m.openContextPanel(contextBoard)
-			return m, textinput.Blink
+		case key.Matches(msg, m.keys.PrevBoard):
+			changed, err := m.switchBoardByOffset(-1)
+			if err != nil {
+				m.statusLine = err.Error()
+				return m, nil
+			}
+			if changed {
+				return m, m.loadTasksCmd()
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.NextBoard):
+			changed, err := m.switchBoardByOffset(1)
+			if err != nil {
+				m.statusLine = err.Error()
+				return m, nil
+			}
+			if changed {
+				return m, m.loadTasksCmd()
+			}
+			return m, nil
 		case key.Matches(msg, m.keys.ToggleView):
 			if m.viewMode == viewList {
 				m.viewMode = viewKanban
@@ -1381,9 +1398,6 @@ func (m Model) updateContextPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.OpenWorkspace):
 			m.openContextPanel(contextWorkspace)
 			return m, textinput.Blink
-		case key.Matches(msg, m.keys.OpenBoard):
-			m.openContextPanel(contextBoard)
-			return m, textinput.Blink
 		case key.Matches(msg, m.keys.Up):
 			m.contextSelected--
 			m.clampContextSelection()
@@ -1599,6 +1613,25 @@ func boardIndexByID(items []domain.Board, id string) int {
 	return -1
 }
 
+func (m *Model) switchBoardByOffset(delta int) (bool, error) {
+	if len(m.boards) == 0 {
+		return false, nil
+	}
+
+	current := boardIndexByID(m.boards, m.boardID)
+	if current < 0 {
+		current = 0
+	}
+	next := (current + delta + len(m.boards)) % len(m.boards)
+	if m.boards[next].ID == m.boardID {
+		return false, nil
+	}
+	if err := m.switchBoard(m.boards[next].ID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (m *Model) adjustFilterSelection(delta int) (bool, error) {
 	changed := false
 	switch m.filterFocus {
@@ -1800,7 +1833,8 @@ func (m Model) keybindEntries() []keybindEntry {
 		{ID: "search", Key: "/", Label: "Search"},
 		{ID: "open_filters", Key: "f", Label: "Open filter/sort panel"},
 		{ID: "open_workspaces", Key: "w", Label: "Open workspace switcher"},
-		{ID: "open_boards", Key: "b", Label: "Open board switcher"},
+		{ID: "prev_board", Key: "[", Label: "Previous board"},
+		{ID: "next_board", Key: "]", Label: "Next board"},
 		{ID: "toggle_details", Key: "d", Label: "Toggle details pane"},
 		{ID: "open_move", Key: "Enter", Label: "Open details / move in kanban"},
 		{ID: "move_task", Key: "m", Label: "Move task to next status"},
@@ -1995,9 +2029,26 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 	case "open_workspaces":
 		m.openContextPanel(contextWorkspace)
 		return m, textinput.Blink
-	case "open_boards":
-		m.openContextPanel(contextBoard)
-		return m, textinput.Blink
+	case "prev_board":
+		changed, err := m.switchBoardByOffset(-1)
+		if err != nil {
+			m.statusLine = err.Error()
+			return m, nil
+		}
+		if changed {
+			return m, m.loadTasksCmd()
+		}
+		return m, nil
+	case "next_board":
+		changed, err := m.switchBoardByOffset(1)
+		if err != nil {
+			m.statusLine = err.Error()
+			return m, nil
+		}
+		if changed {
+			return m, m.loadTasksCmd()
+		}
+		return m, nil
 	case "clear_search":
 		if strings.TrimSpace(m.titleFilter) == "" {
 			return m, nil
@@ -2260,7 +2311,7 @@ func (m Model) renderFooter() string {
 		inputLine = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(m.textArea.View())
 	}
 
-	shortcuts := "?:keybinds w:workspaces b:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
+	shortcuts := "?:keybinds w:workspaces [ ]:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " x:clear-search"
 	}
