@@ -48,7 +48,7 @@ func newKeyMap() keyMap {
 		ClearSearch:     key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "clear search")),
 		ShowFilters:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "filters")),
 		OpenWorkspace:   key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "workspaces")),
-		OpenBoardPanel:  key.NewBinding(key.WithKeys("B"), key.WithHelp("B", "board manager")),
+		OpenBoardPanel:  key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "board manager")),
 		PrevBoard:       key.NewBinding(key.WithKeys("["), key.WithHelp("[", "prev board")),
 		NextBoard:       key.NewBinding(key.WithKeys("]"), key.WithHelp("]", "next board")),
 		ShowKeybinds:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keybinds")),

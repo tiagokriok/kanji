@@ -214,3 +214,50 @@ func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column
 	}
 	return tx.Commit()
 }
+
+func (r *SetupRepository) ReorderColumns(ctx context.Context, boardID string, orderedColumnIDs []string) error {
+	boardID = strings.TrimSpace(boardID)
+	if boardID == "" {
+		return fmt.Errorf("board id is required")
+	}
+	if len(orderedColumnIDs) == 0 {
+		return fmt.Errorf("at least one column id is required")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx for reorder columns: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	for idx, columnID := range orderedColumnIDs {
+		columnID = strings.TrimSpace(columnID)
+		if columnID == "" {
+			return fmt.Errorf("column id at position %d is empty", idx+1)
+		}
+		result, execErr := tx.ExecContext(
+			ctx,
+			`UPDATE columns SET position = ? WHERE id = ? AND board_id = ?`,
+			idx+1,
+			columnID,
+			boardID,
+		)
+		if execErr != nil {
+			return fmt.Errorf("update position for column %s: %w", columnID, execErr)
+		}
+		affected, affErr := result.RowsAffected()
+		if affErr != nil {
+			return fmt.Errorf("rows affected for column %s: %w", columnID, affErr)
+		}
+		if affected == 0 {
+			return fmt.Errorf("column %s not found in board", columnID)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reorder columns: %w", err)
+	}
+	return nil
+}

@@ -148,6 +148,31 @@ func (s *ContextService) RenameBoard(ctx context.Context, boardID, name string) 
 	return s.repo.RenameBoard(ctx, boardID, name)
 }
 
+func (s *ContextService) ReorderColumns(ctx context.Context, boardID string, orderedColumnIDs []string) error {
+	boardID = strings.TrimSpace(boardID)
+	if boardID == "" {
+		return errors.New("board id is required")
+	}
+	if len(orderedColumnIDs) == 0 {
+		return errors.New("at least one column id is required")
+	}
+
+	seen := make(map[string]struct{}, len(orderedColumnIDs))
+	for i, id := range orderedColumnIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return fmt.Errorf("column id at position %d is required", i+1)
+		}
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("duplicate column id at position %d", i+1)
+		}
+		seen[id] = struct{}{}
+		orderedColumnIDs[i] = id
+	}
+
+	return s.repo.ReorderColumns(ctx, boardID, orderedColumnIDs)
+}
+
 func (s *ContextService) BuildLastBoardByWorkspace(ctx context.Context) (map[string]string, error) {
 	workspaces, err := s.repo.ListWorkspaces(ctx)
 	if err != nil {

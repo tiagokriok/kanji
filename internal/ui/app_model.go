@@ -126,6 +126,56 @@ type boardCreateForm struct {
 	columns   []boardColumnFormRow
 }
 
+type boardColumnsOrderForm struct {
+	boardID   string
+	boardName string
+	columns   []domain.Column
+	selected  int
+}
+
+func (f *boardColumnsOrderForm) clampSelection() {
+	if len(f.columns) == 0 {
+		f.selected = 0
+		return
+	}
+	if f.selected < 0 {
+		f.selected = 0
+	}
+	if f.selected >= len(f.columns) {
+		f.selected = len(f.columns) - 1
+	}
+}
+
+func (f *boardColumnsOrderForm) moveSelection(delta int) {
+	f.selected += delta
+	f.clampSelection()
+}
+
+func (f *boardColumnsOrderForm) moveSelected(delta int) bool {
+	if len(f.columns) < 2 {
+		return false
+	}
+	f.clampSelection()
+	target := f.selected + delta
+	if target < 0 || target >= len(f.columns) {
+		return false
+	}
+	f.columns[f.selected], f.columns[target] = f.columns[target], f.columns[f.selected]
+	f.selected = target
+	for i := range f.columns {
+		f.columns[i].Position = i + 1
+	}
+	return true
+}
+
+func (f *boardColumnsOrderForm) orderedColumnIDs() []string {
+	ids := make([]string, 0, len(f.columns))
+	for _, col := range f.columns {
+		ids = append(ids, col.ID)
+	}
+	return ids
+}
+
 func newBoardColumnRow(index int, name, color string) boardColumnFormRow {
 	if index < 1 {
 		index = 1
@@ -377,6 +427,7 @@ type Model struct {
 	showContexts bool
 	contextMode  contextMode
 	boardForm    *boardCreateForm
+	boardOrder   *boardColumnsOrderForm
 
 	textInput textinput.Model
 	textArea  textarea.Model
@@ -1346,6 +1397,7 @@ func (m *Model) openContextPanel(mode contextMode) {
 	m.contextSelected = 0
 	m.contextEditMode = contextEditNone
 	m.boardForm = nil
+	m.boardOrder = nil
 	m.contextEditInput.SetValue("")
 	m.contextFilter.SetValue("")
 	m.contextFilter.Focus()
@@ -1355,6 +1407,7 @@ func (m *Model) closeContextPanel() {
 	m.showContexts = false
 	m.contextEditMode = contextEditNone
 	m.boardForm = nil
+	m.boardOrder = nil
 	m.contextEditInput.Blur()
 	m.contextFilter.Blur()
 }
@@ -1445,6 +1498,65 @@ func (m *Model) startBoardCreateForm() {
 func (m *Model) closeBoardCreateForm() {
 	m.boardForm = nil
 	m.contextFilter.Focus()
+}
+
+func (m *Model) beginBoardColumnsReorder() error {
+	if m.contextService == nil {
+		return nil
+	}
+	if m.contextMode != contextBoard {
+		return nil
+	}
+
+	boardID := m.selectedContextID()
+	if boardID == "" {
+		return fmt.Errorf("no board selected")
+	}
+
+	columns, err := m.contextService.ListColumns(context.Background(), boardID)
+	if err != nil {
+		return err
+	}
+	if len(columns) == 0 {
+		return fmt.Errorf("selected board has no columns")
+	}
+	sort.Slice(columns, func(i, j int) bool {
+		return columns[i].Position < columns[j].Position
+	})
+
+	m.boardOrder = &boardColumnsOrderForm{
+		boardID:   boardID,
+		boardName: m.contextNameByID(boardID),
+		columns:   columns,
+		selected:  0,
+	}
+	m.boardForm = nil
+	m.contextEditMode = contextEditNone
+	m.contextEditInput.Blur()
+	m.contextFilter.Blur()
+	return nil
+}
+
+func (m *Model) closeBoardColumnsReorder() {
+	m.boardOrder = nil
+	m.contextFilter.Focus()
+}
+
+func (m *Model) submitBoardColumnsReorder() error {
+	if m.contextService == nil || m.boardOrder == nil {
+		return nil
+	}
+	form := m.boardOrder
+	if err := m.contextService.ReorderColumns(context.Background(), form.boardID, form.orderedColumnIDs()); err != nil {
+		return err
+	}
+	if form.boardID == m.boardID {
+		if err := m.switchBoard(m.boardID); err != nil {
+			return err
+		}
+	}
+	m.closeBoardColumnsReorder()
+	return nil
 }
 
 func (m *Model) submitBoardCreateForm() error {
@@ -1612,6 +1724,39 @@ func (m Model) updateContextPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
+		if m.boardOrder != nil {
+			switch {
+			case key.Matches(msg, m.keys.Cancel):
+				m.closeBoardColumnsReorder()
+				return m, nil
+			case key.Matches(msg, m.keys.Confirm):
+				if err := m.submitBoardColumnsReorder(); err != nil {
+					m.statusLine = err.Error()
+					return m, nil
+				}
+				return m, m.loadTasksCmd()
+			case key.Matches(msg, m.keys.Up):
+				m.boardOrder.moveSelection(-1)
+				return m, nil
+			case key.Matches(msg, m.keys.Down):
+				m.boardOrder.moveSelection(1)
+				return m, nil
+			}
+			switch msg.String() {
+			case "ctrl+k":
+				if m.boardOrder.moveSelected(-1) {
+					m.statusLine = ""
+				}
+				return m, nil
+			case "ctrl+j":
+				if m.boardOrder.moveSelected(1) {
+					m.statusLine = ""
+				}
+				return m, nil
+			}
+			return m, nil
+		}
+
 		if m.boardForm != nil {
 			switch msg.String() {
 			case "tab", "down":
@@ -1712,6 +1857,12 @@ func (m Model) updateContextPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.String() == "r":
 			m.beginContextRename()
 			return m, textinput.Blink
+		case msg.String() == "o" && m.contextMode == contextBoard:
+			if err := m.beginBoardColumnsReorder(); err != nil {
+				m.statusLine = err.Error()
+				return m, nil
+			}
+			return m, nil
 		case key.Matches(msg, m.keys.Confirm):
 			id := m.selectedContextID()
 			if id == "" {
@@ -1758,6 +1909,11 @@ func (m Model) renderContextPanel(base string) string {
 	contentWidth := boxContentWidth(panelWidth, 1, true)
 	contentHeight := boxContentHeight(panelHeight, true)
 
+	if m.boardOrder != nil {
+		panel := m.renderBoardColumnsOrderContextPanel(contentWidth, contentHeight)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+	}
+
 	if m.boardForm != nil {
 		panel := m.renderBoardCreateContextPanel(contentWidth, contentHeight)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
@@ -1776,7 +1932,7 @@ func (m Model) renderContextPanel(base string) string {
 
 	helpText := "Type to filter | Enter: switch | n:create | r:rename | Esc:close"
 	if m.contextMode == contextBoard {
-		helpText = "Type to filter | Enter: switch | n:create (name + columns + colors) | r:rename | Esc:close"
+		helpText = "Type to filter | Enter: switch | n:create (name + columns + colors) | r:rename | o:reorder columns | Esc:close"
 	}
 
 	lines := []string{
@@ -1821,6 +1977,75 @@ func (m Model) renderContextPanel(base string) string {
 		Render(strings.Join(lines, "\n"))
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+}
+
+func (m Model) renderBoardColumnsOrderContextPanel(contentWidth, contentHeight int) string {
+	if m.boardOrder == nil {
+		return ""
+	}
+	form := m.boardOrder
+	form.clampSelection()
+
+	help := "Up/Down select | Ctrl+K move up | Ctrl+J move down | Enter save | Esc cancel"
+	header := []string{
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("151")).Render("Reorder Columns"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(help),
+		"",
+		lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render("Board: " + form.boardName),
+		"",
+	}
+
+	footer := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(fmt.Sprintf("Columns: %d", len(form.columns)))
+	availableLines := contentHeight - len(header) - 2 // spacer + footer
+	if availableLines < 1 {
+		availableLines = 1
+	}
+
+	offset := 0
+	if form.selected >= availableLines {
+		offset = form.selected - availableLines + 1
+	}
+	maxOffset := max(0, len(form.columns)-availableLines)
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	end := min(len(form.columns), offset+availableLines)
+
+	lines := make([]string, 0, contentHeight+2)
+	lines = append(lines, header...)
+
+	rowWidth := max(12, contentWidth-4)
+	for i := offset; i < end; i++ {
+		col := form.columns[i]
+		name := strings.TrimSpace(col.Name)
+		if name == "" {
+			name = "(unnamed)"
+		}
+		colorHex := strings.ToUpper(strings.TrimSpace(col.Color))
+		if colorHex == "" {
+			colorHex = "#9CA3AF"
+		}
+		swatch := lipgloss.NewStyle().
+			Width(2).
+			Background(colorFromHexOrDefault(colorHex, "240")).
+			Render("  ")
+		base := fmt.Sprintf("%2d. %s %s %s", i+1, swatch, truncate(name, max(4, rowWidth-18)), colorHex)
+		line := lipgloss.NewStyle().Width(rowWidth).Foreground(lipgloss.Color("252")).Render(base)
+		if i == form.selected {
+			line = lipgloss.NewStyle().Width(rowWidth).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Render(base)
+		}
+		lines = append(lines, line)
+	}
+
+	lines = append(lines, "", footer)
+
+	return lipgloss.NewStyle().
+		Width(contentWidth).
+		Height(contentHeight).
+		Padding(0, 1).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("151")).
+		Render(strings.Join(lines, "\n"))
 }
 
 func (m Model) renderBoardCreateContextPanel(contentWidth, contentHeight int) string {
@@ -2215,7 +2440,7 @@ func (m Model) keybindEntries() []keybindEntry {
 		{ID: "search", Key: "/", Label: "Search"},
 		{ID: "open_filters", Key: "f", Label: "Open filter/sort panel"},
 		{ID: "open_workspaces", Key: "w", Label: "Open workspace switcher"},
-		{ID: "open_board_panel", Key: "B", Label: "Open board manager"},
+		{ID: "open_board_panel", Key: "b", Label: "Open board manager"},
 		{ID: "prev_board", Key: "[", Label: "Previous board"},
 		{ID: "next_board", Key: "]", Label: "Next board"},
 		{ID: "toggle_details", Key: "d", Label: "Toggle details pane"},
@@ -2697,7 +2922,7 @@ func (m Model) renderFooter() string {
 		inputLine = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(m.textArea.View())
 	}
 
-	shortcuts := "?:keybinds w:workspaces B:board-manager [ ]:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
+	shortcuts := "?:keybinds w:workspaces b:board-manager [ ]:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " x:clear-search"
 	}
