@@ -86,19 +86,13 @@ func (s *ContextService) CreateBoard(ctx context.Context, workspaceID, name stri
 		return domain.Board{}, err
 	}
 
-	defaults := []struct {
-		Name     string
-		Position int
-	}{
-		{Name: "Todo", Position: 1},
-		{Name: "Doing", Position: 2},
-		{Name: "Done", Position: 3},
-	}
+	defaults := defaultColumnSpecs()
 	for _, d := range defaults {
 		c := domain.Column{
 			ID:       uuid.NewString(),
 			BoardID:  board.ID,
 			Name:     d.Name,
+			Color:    d.Color,
 			Position: d.Position,
 		}
 		if err := s.repo.CreateColumn(ctx, c); err != nil {

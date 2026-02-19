@@ -5,6 +5,7 @@ type Column struct {
 	BoardID  string
 	RemoteID *string
 	Name     string
+	Color    string
 	Position int
 	WIPLimit *int
 }

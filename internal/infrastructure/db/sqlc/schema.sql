@@ -28,6 +28,8 @@ CREATE TABLE columns (
   board_id TEXT NOT NULL,
   remote_id TEXT NULL,
   name TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '#6B7280'
+    CHECK (color GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'),
   position INTEGER NOT NULL,
   wip_limit INTEGER NULL,
   FOREIGN KEY (board_id) REFERENCES boards(id)

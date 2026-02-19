@@ -205,6 +205,7 @@ func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column
 		BoardID:  column.BoardID,
 		RemoteID: nullString(column.RemoteID),
 		Name:     column.Name,
+		Color:    normalizeHexColor(column.Color),
 		Position: int64(column.Position),
 		WipLimit: wip,
 	})

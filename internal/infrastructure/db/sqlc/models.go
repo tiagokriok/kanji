@@ -30,6 +30,7 @@ type Column struct {
 	BoardID  string
 	RemoteID sql.NullString
 	Name     string
+	Color    string
 	Position int64
 	WipLimit sql.NullInt64
 }

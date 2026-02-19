@@ -156,8 +156,8 @@ func (q *Queries) ListBoards(ctx context.Context, workspaceID string) ([]Board, 
 }
 
 const createColumn = `-- name: CreateColumn :exec
-INSERT INTO columns (id, board_id, remote_id, name, position, wip_limit)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO columns (id, board_id, remote_id, name, color, position, wip_limit)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateColumnParams struct {
@@ -165,17 +165,18 @@ type CreateColumnParams struct {
 	BoardID  string
 	RemoteID sql.NullString
 	Name     string
+	Color    string
 	Position int64
 	WipLimit sql.NullInt64
 }
 
 func (q *Queries) CreateColumn(ctx context.Context, arg CreateColumnParams) error {
-	_, err := q.db.ExecContext(ctx, createColumn, arg.ID, arg.BoardID, arg.RemoteID, arg.Name, arg.Position, arg.WipLimit)
+	_, err := q.db.ExecContext(ctx, createColumn, arg.ID, arg.BoardID, arg.RemoteID, arg.Name, arg.Color, arg.Position, arg.WipLimit)
 	return err
 }
 
 const listColumns = `-- name: ListColumns :many
-SELECT id, board_id, remote_id, name, position, wip_limit
+SELECT id, board_id, remote_id, name, color, position, wip_limit
 FROM columns
 WHERE board_id = ?
 ORDER BY position ASC
@@ -191,7 +192,7 @@ func (q *Queries) ListColumns(ctx context.Context, boardID string) ([]Column, er
 	items := make([]Column, 0)
 	for rows.Next() {
 		var i Column
-		if err := rows.Scan(&i.ID, &i.BoardID, &i.RemoteID, &i.Name, &i.Position, &i.WipLimit); err != nil {
+		if err := rows.Scan(&i.ID, &i.BoardID, &i.RemoteID, &i.Name, &i.Color, &i.Position, &i.WipLimit); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

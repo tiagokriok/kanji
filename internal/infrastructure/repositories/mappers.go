@@ -3,11 +3,17 @@ package repositories
 import (
 	"database/sql"
 	"encoding/json"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/tiagokriok/lazytask/internal/domain"
 	"github.com/tiagokriok/lazytask/internal/infrastructure/db/sqlc"
 )
+
+const defaultColumnColor = "#6B7280"
+
+var hexColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 func nullString(v *string) sql.NullString {
 	if v == nil {
@@ -21,6 +27,14 @@ func nullInt(v *int) sql.NullInt64 {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: int64(*v), Valid: true}
+}
+
+func normalizeHexColor(v string) string {
+	color := strings.ToUpper(strings.TrimSpace(v))
+	if hexColorPattern.MatchString(color) {
+		return color
+	}
+	return defaultColumnColor
 }
 
 func nullableTimeToString(v *time.Time) sql.NullString {
@@ -157,6 +171,7 @@ func fromSQLColumn(c sqlc.Column) domain.Column {
 		BoardID:  c.BoardID,
 		RemoteID: remoteID,
 		Name:     c.Name,
+		Color:    normalizeHexColor(c.Color),
 		Position: int(c.Position),
 		WIPLimit: wipLimit,
 	}

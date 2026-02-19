@@ -27,11 +27,11 @@ WHERE workspace_id = ?
 ORDER BY name ASC;
 
 -- name: CreateColumn :exec
-INSERT INTO columns (id, board_id, remote_id, name, position, wip_limit)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO columns (id, board_id, remote_id, name, color, position, wip_limit)
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListColumns :many
-SELECT id, board_id, remote_id, name, position, wip_limit
+SELECT id, board_id, remote_id, name, color, position, wip_limit
 FROM columns
 WHERE board_id = ?
 ORDER BY position ASC;
