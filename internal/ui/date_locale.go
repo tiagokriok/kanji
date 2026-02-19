@@ -113,6 +113,15 @@ func (m Model) formatDueDate(dueAt time.Time) string {
 	return dueAt.UTC().Format(m.dateFormat.DisplayLayout)
 }
 
+func (m Model) formatCommentDateTime(ts time.Time) string {
+	dateLayout := m.dateFormat.DisplayLayout
+	if dateLayout == "" {
+		dateLayout = "2006-01-02"
+	}
+	// Comment timestamps are moments in time, so render in local time with HH:mm.
+	return ts.In(time.Local).Format(dateLayout + " 15:04")
+}
+
 func (m Model) dueDatePlaceholder() string {
 	hint := m.dateFormat.Hint
 	if hint == "" {

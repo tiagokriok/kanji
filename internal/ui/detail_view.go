@@ -54,7 +54,7 @@ func (m Model) renderDetailView(width, height int) string {
 		if c.Author != nil && *c.Author != "" {
 			author = *c.Author
 		}
-		timestamp := c.CreatedAt.Format("2006-01-02 15:04")
+		timestamp := m.formatCommentDateTime(c.CreatedAt)
 		body := renderMarkdownMinimal(c.BodyMD)
 		commentLines = append(commentLines, fmt.Sprintf("%s  %s\n%s", author, timestamp, indentLines(body, "  ")))
 	}
