@@ -5,11 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/tiagokriok/lazytask/internal/application"
+	"github.com/tiagokriok/lazytask/internal/domain"
 	"github.com/tiagokriok/lazytask/internal/infrastructure/db"
 	"github.com/tiagokriok/lazytask/internal/infrastructure/providers"
 	"github.com/tiagokriok/lazytask/internal/infrastructure/repositories"
@@ -65,69 +67,397 @@ func run() error {
 	commentRepo := repositories.NewCommentRepository(adapter)
 	taskService := application.NewTaskService(taskRepo)
 	commentService := application.NewCommentService(commentRepo)
+	contextService := application.NewContextService(setupRepo)
 
 	if *seedOnly {
-		if err := seedSampleData(ctx, taskService, setup); err != nil {
+		if err := seedSampleData(ctx, taskService, commentService, contextService, setup); err != nil {
 			return err
 		}
 		fmt.Println("seed completed")
 		return nil
 	}
 
-	model := ui.NewModel(taskService, commentService, setup)
+	model := ui.NewModel(taskService, commentService, contextService, setup)
 	program := tea.NewProgram(model, tea.WithAltScreen())
 	_, err = program.Run()
 	return err
 }
 
-func seedSampleData(ctx context.Context, taskService *application.TaskService, setup application.BootstrapResult) error {
-	existing, err := taskService.ListTasks(ctx, application.ListTaskFilters{WorkspaceID: setup.Workspace.ID})
-	if err != nil {
-		return err
-	}
-	if len(existing) > 0 {
-		return nil
-	}
+type seedComment struct {
+	Author string
+	Body   string
+}
 
+type seedTask struct {
+	Title         string
+	DescriptionMD string
+	Column        string
+	Priority      int
+	DueOffsetDays *int
+	Labels        []string
+	Comments      []seedComment
+}
+
+type seedBoard struct {
+	Name  string
+	Tasks []seedTask
+}
+
+type seedWorkspace struct {
+	Name   string
+	Boards []seedBoard
+}
+
+func seedSampleData(
+	ctx context.Context,
+	taskService *application.TaskService,
+	commentService *application.CommentService,
+	contextService *application.ContextService,
+	setup application.BootstrapResult,
+) error {
 	now := time.Now().UTC()
-	types := []struct {
-		Title       string
-		Description string
-		Priority    int
-		DueOffset   int
-		ColumnIdx   int
-	}{
-		{Title: "Capture quick wins", Description: "- Add your first tasks\n- Keep work local", Priority: 1, DueOffset: 1, ColumnIdx: 0},
-		{Title: "Ship MVP", Description: "## Goal\nDeliver list + kanban + details.", Priority: 2, DueOffset: 3, ColumnIdx: 1},
-		{Title: "Write release notes", Description: "Document key bindings and usage.", Priority: 0, DueOffset: 7, ColumnIdx: 2},
+	spec := []seedWorkspace{
+		{
+			Name: setup.Workspace.Name,
+			Boards: []seedBoard{
+				{
+					Name: setup.Board.Name,
+					Tasks: []seedTask{
+						{
+							Title:         "Critical: validate rollback path in production",
+							DescriptionMD: "## Objective\nEnsure rollback is documented and tested.\n\n- Validate DB backup restore\n- Validate feature flag rollback\n- Capture runbook updates",
+							Column:        "Doing",
+							Priority:      0,
+							DueOffsetDays: intPtr(-1),
+							Labels:        []string{"release", "ops"},
+							Comments: []seedComment{
+								{Author: "oncall", Body: "Rollback drill started. Capturing timings and side effects."},
+								{Author: "sre", Body: "Need to verify queue drain before rollback."},
+							},
+						},
+						{
+							Title:         "Urgent: stabilize flaky integration tests",
+							DescriptionMD: "Failing suite blocks merges.\n\n```bash\ngo test ./... -run Integration\n```",
+							Column:        "Todo",
+							Priority:      1,
+							DueOffsetDays: intPtr(1),
+							Labels:        []string{"quality", "ci"},
+						},
+						{
+							Title:         "High: publish release notes for v0.2",
+							DescriptionMD: "### Notes\nSummarize UX changes, keybindings, and known limitations.",
+							Column:        "Done",
+							Priority:      2,
+							DueOffsetDays: intPtr(3),
+							Labels:        []string{"docs"},
+							Comments: []seedComment{
+								{Author: "pm", Body: "Include screenshots for list and filter panel."},
+							},
+						},
+						{
+							Title:         "Medium: document workspace and board strategy",
+							DescriptionMD: "Create short guide for teams:\n- when to create workspace\n- when to create board",
+							Column:        "Todo",
+							Priority:      3,
+							DueOffsetDays: intPtr(7),
+							Labels:        []string{"docs", "ux"},
+						},
+						{
+							Title:         "Low: clean up deprecated migration notes",
+							DescriptionMD: "Remove stale notes after verifying historical references.",
+							Column:        "Done",
+							Priority:      4,
+							DueOffsetDays: nil,
+							Labels:        []string{"cleanup"},
+						},
+						{
+							Title:         "None: backlog idea - keyboard macro mode",
+							DescriptionMD: "Potential future enhancement for power users.",
+							Column:        "Todo",
+							Priority:      5,
+							DueOffsetDays: intPtr(30),
+							Labels:        []string{"idea"},
+						},
+					},
+				},
+			},
+		},
+		{
+			Name: "Seed - Product",
+			Boards: []seedBoard{
+				{
+					Name: "Roadmap Q2",
+					Tasks: []seedTask{
+						{
+							Title:         "Launch context switcher UX",
+							DescriptionMD: "### Success Criteria\n- Workspace switch in <2 keypresses\n- Board switch in <2 keypresses\n- Persist last context",
+							Column:        "Doing",
+							Priority:      1,
+							DueOffsetDays: intPtr(2),
+							Labels:        []string{"ux", "navigation"},
+							Comments: []seedComment{
+								{Author: "design", Body: "Need clear focus state in modal list."},
+							},
+						},
+						{
+							Title:         "Implement workspace permissions model (future)",
+							DescriptionMD: "Exploratory task. Not for MVP.\n\n- Define roles\n- Define ownership boundaries",
+							Column:        "Todo",
+							Priority:      3,
+							DueOffsetDays: nil,
+							Labels:        []string{"architecture"},
+						},
+						{
+							Title:         "Finalize roadmap review deck",
+							DescriptionMD: "Prepare meeting-ready deck with milestones and risks.",
+							Column:        "Done",
+							Priority:      2,
+							DueOffsetDays: intPtr(5),
+							Labels:        []string{"planning"},
+						},
+					},
+				},
+				{
+					Name: "Bug Triage",
+					Tasks: []seedTask{
+						{
+							Title:         "Fix filter panel not refreshing list",
+							DescriptionMD: "Regression appears when modal intercepts update messages.",
+							Column:        "Done",
+							Priority:      0,
+							DueOffsetDays: intPtr(-2),
+							Labels:        []string{"bug", "ui"},
+						},
+						{
+							Title:         "Investigate table row wrapping in split view",
+							DescriptionMD: "Reproduce on narrow terminals and verify pri column alignment.",
+							Column:        "Doing",
+							Priority:      1,
+							DueOffsetDays: intPtr(1),
+							Labels:        []string{"bug", "layout"},
+						},
+						{
+							Title:         "Re-test markdown editor multiline persistence",
+							DescriptionMD: "Validate Ctrl+g flow with 30+ lines of markdown.",
+							Column:        "Todo",
+							Priority:      2,
+							DueOffsetDays: intPtr(4),
+							Labels:        []string{"bug", "editor"},
+						},
+					},
+				},
+			},
+		},
+		{
+			Name: "Seed - Personal",
+			Boards: []seedBoard{
+				{
+					Name: "Home Ops",
+					Tasks: []seedTask{
+						{
+							Title:         "Pay utilities and reconcile receipts",
+							DescriptionMD: "Track water, power, and internet payment confirmation IDs.",
+							Column:        "Todo",
+							Priority:      2,
+							DueOffsetDays: intPtr(2),
+							Labels:        []string{"home", "finance"},
+						},
+						{
+							Title:         "Schedule annual health check",
+							DescriptionMD: "Call clinic and confirm available dates.",
+							Column:        "Doing",
+							Priority:      3,
+							DueOffsetDays: intPtr(10),
+							Labels:        []string{"health"},
+						},
+						{
+							Title:         "Archive old paper documents",
+							DescriptionMD: "Scan and tag all docs older than 2 years.",
+							Column:        "Done",
+							Priority:      5,
+							DueOffsetDays: nil,
+							Labels:        []string{"home", "cleanup"},
+						},
+					},
+				},
+				{
+					Name: "Learning Lab",
+					Tasks: []seedTask{
+						{
+							Title:         "Read Bubble Tea internals article",
+							DescriptionMD: "Focus on update loop and command scheduling model.",
+							Column:        "Todo",
+							Priority:      4,
+							DueOffsetDays: nil,
+							Labels:        []string{"learning", "go"},
+						},
+						{
+							Title:         "Practice SQL indexing patterns",
+							DescriptionMD: "Test explain plans for workspace+board filters.",
+							Column:        "Doing",
+							Priority:      2,
+							DueOffsetDays: intPtr(6),
+							Labels:        []string{"learning", "sql"},
+						},
+					},
+				},
+			},
+		},
 	}
 
-	for _, t := range types {
-		var colID *string
-		var status *string
-		if t.ColumnIdx < len(setup.Columns) {
-			cid := setup.Columns[t.ColumnIdx].ID
-			st := setup.Columns[t.ColumnIdx].Name
-			colID = &cid
-			status = &st
-		}
-		due := now.AddDate(0, 0, t.DueOffset)
-		boardID := setup.Board.ID
-		_, err := taskService.CreateTask(ctx, application.CreateTaskInput{
-			ProviderID:    setup.Provider.ID,
-			WorkspaceID:   setup.Workspace.ID,
-			BoardID:       &boardID,
-			ColumnID:      colID,
-			Title:         t.Title,
-			DescriptionMD: t.Description,
-			Priority:      t.Priority,
-			DueAt:         &due,
-			Status:        status,
-			Labels:        []string{"seed"},
-		})
+	for _, wsSpec := range spec {
+		workspace, err := ensureWorkspaceByName(ctx, contextService, setup.Provider.ID, wsSpec.Name)
 		if err != nil {
 			return err
 		}
+
+		for _, boardSpec := range wsSpec.Boards {
+			board, err := ensureBoardByName(ctx, contextService, workspace.ID, boardSpec.Name)
+			if err != nil {
+				return err
+			}
+
+			columns, err := contextService.ListColumns(ctx, board.ID)
+			if err != nil {
+				return err
+			}
+			existingTasks, err := taskService.ListTasks(ctx, application.ListTaskFilters{
+				WorkspaceID: workspace.ID,
+				BoardID:     board.ID,
+			})
+			if err != nil {
+				return err
+			}
+
+			taskByTitle := make(map[string]domain.Task, len(existingTasks))
+			for _, task := range existingTasks {
+				taskByTitle[strings.ToLower(strings.TrimSpace(task.Title))] = task
+			}
+
+			for _, taskSpec := range boardSpec.Tasks {
+				key := strings.ToLower(strings.TrimSpace(taskSpec.Title))
+				task, exists := taskByTitle[key]
+				if !exists {
+					var dueAt *time.Time
+					if taskSpec.DueOffsetDays != nil {
+						d := now.AddDate(0, 0, *taskSpec.DueOffsetDays)
+						dueAt = &d
+					}
+
+					columnID, status := resolveSeedColumn(columns, taskSpec.Column)
+					task, err = taskService.CreateTask(ctx, application.CreateTaskInput{
+						ProviderID:    setup.Provider.ID,
+						WorkspaceID:   workspace.ID,
+						BoardID:       &board.ID,
+						ColumnID:      columnID,
+						Title:         taskSpec.Title,
+						DescriptionMD: taskSpec.DescriptionMD,
+						Status:        status,
+						Priority:      taskSpec.Priority,
+						DueAt:         dueAt,
+						Labels:        taskSpec.Labels,
+					})
+					if err != nil {
+						return err
+					}
+				}
+
+				if len(taskSpec.Comments) == 0 {
+					continue
+				}
+				existingComments, err := commentService.ListComments(ctx, task.ID)
+				if err != nil {
+					return err
+				}
+				commentSet := make(map[string]struct{}, len(existingComments))
+				for _, c := range existingComments {
+					commentSet[strings.TrimSpace(c.BodyMD)] = struct{}{}
+				}
+				for _, c := range taskSpec.Comments {
+					body := strings.TrimSpace(c.Body)
+					if body == "" {
+						continue
+					}
+					if _, ok := commentSet[body]; ok {
+						continue
+					}
+					author := strPtr(c.Author)
+					if strings.TrimSpace(c.Author) == "" {
+						author = nil
+					}
+					if _, err := commentService.AddComment(ctx, application.AddCommentInput{
+						TaskID:     task.ID,
+						ProviderID: setup.Provider.ID,
+						BodyMD:     body,
+						Author:     author,
+					}); err != nil {
+						return err
+					}
+				}
+			}
+		}
 	}
+
 	return nil
+}
+
+func ensureWorkspaceByName(
+	ctx context.Context,
+	contextService *application.ContextService,
+	providerID string,
+	name string,
+) (domain.Workspace, error) {
+	workspaces, err := contextService.ListWorkspaces(ctx)
+	if err != nil {
+		return domain.Workspace{}, err
+	}
+	for _, workspace := range workspaces {
+		if strings.EqualFold(strings.TrimSpace(workspace.Name), strings.TrimSpace(name)) {
+			return workspace, nil
+		}
+	}
+	workspace, _, err := contextService.CreateWorkspace(ctx, providerID, name)
+	return workspace, err
+}
+
+func ensureBoardByName(
+	ctx context.Context,
+	contextService *application.ContextService,
+	workspaceID string,
+	name string,
+) (domain.Board, error) {
+	boards, err := contextService.ListBoards(ctx, workspaceID)
+	if err != nil {
+		return domain.Board{}, err
+	}
+	for _, board := range boards {
+		if strings.EqualFold(strings.TrimSpace(board.Name), strings.TrimSpace(name)) {
+			return board, nil
+		}
+	}
+	return contextService.CreateBoard(ctx, workspaceID, name)
+}
+
+func resolveSeedColumn(columns []domain.Column, preferred string) (*string, *string) {
+	for _, col := range columns {
+		if strings.EqualFold(strings.TrimSpace(col.Name), strings.TrimSpace(preferred)) {
+			id := col.ID
+			status := strings.ToLower(col.Name)
+			return &id, &status
+		}
+	}
+	if len(columns) == 0 {
+		return nil, nil
+	}
+	id := columns[0].ID
+	status := strings.ToLower(columns[0].Name)
+	return &id, &status
+}
+
+func intPtr(v int) *int {
+	return &v
+}
+
+func strPtr(v string) *string {
+	return &v
 }

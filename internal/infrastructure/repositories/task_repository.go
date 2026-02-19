@@ -110,6 +110,7 @@ func (r *TaskRepository) GetByID(ctx context.Context, taskID string) (domain.Tas
 func (r *TaskRepository) List(ctx context.Context, filter domain.TaskFilter) ([]domain.Task, error) {
 	arg := sqlc.ListTasksParams{
 		WorkspaceID: filter.WorkspaceID,
+		BoardID:     filter.BoardID,
 		TitleQuery:  filter.TitleQuery,
 		ColumnID:    filter.ColumnID,
 		Status:      filter.Status,
