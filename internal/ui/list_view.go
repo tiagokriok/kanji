@@ -69,7 +69,7 @@ func (m Model) renderListFilterBar(width int) string {
 	}
 	filterLabel := strings.Join(filters, " + ")
 
-	content := fmt.Sprintf("View: List | Workspace: %s | Sort: %s | Filter: %s", m.workspaceName, m.sortModeLabel(), filterLabel)
+	content := fmt.Sprintf("View: List | Sort: %s | Filter: %s", m.sortModeLabel(), filterLabel)
 	if strings.TrimSpace(m.titleFilter) != "" {
 		content = fmt.Sprintf("%s | Search: %s", content, m.titleFilter)
 	}
@@ -80,12 +80,18 @@ func (m Model) renderListFilterBar(width int) string {
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("250")).
 		Render(content)
-	return withTopBorderLabel(panel, m.renderBoardStrip())
+	return withTopBorderLabel(panel, m.renderWorkspaceBoardStrip())
 }
 
-func (m Model) renderBoardStrip() string {
+func (m Model) renderWorkspaceBoardStrip() string {
+	workspace := truncate(strings.TrimSpace(m.workspaceName), 24)
+	if workspace == "" {
+		workspace = "-"
+	}
+	workspaceLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("151")).Bold(true).Render("[" + workspace + "]")
+
 	if len(m.boards) == 0 {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render("-")
+		return workspaceLabel + " " + lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render("-")
 	}
 
 	current := boardIndexByID(m.boards, m.boardID)
@@ -112,7 +118,8 @@ func (m Model) renderBoardStrip() string {
 	currStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114")).Bold(true)
 	nextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
-	return fmt.Sprintf("%s | %s | %s",
+	return fmt.Sprintf("%s %s | %s | %s",
+		workspaceLabel,
 		prevStyle.Render(prevName),
 		currStyle.Render(currName),
 		nextStyle.Render(nextName),
