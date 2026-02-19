@@ -1,4 +1,4 @@
-module github.com/tiagokriok/lazytask
+module github.com/tiagokriok/kanji
 
 go 1.25.5
 

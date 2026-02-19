@@ -11,10 +11,10 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	"github.com/tiagokriok/lazytask/internal/infrastructure/db/sqlc"
+	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
 )
 
-const DefaultAppName = "lazytask"
+const DefaultAppName = "kanji"
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS

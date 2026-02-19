@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tiagokriok/lazytask/internal/domain"
+	"github.com/tiagokriok/kanji/internal/domain"
 )
 
 type CreateTaskInput struct {

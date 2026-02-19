@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tiagokriok/lazytask/internal/domain"
-	"github.com/tiagokriok/lazytask/internal/infrastructure/db"
-	"github.com/tiagokriok/lazytask/internal/infrastructure/db/sqlc"
+	"github.com/tiagokriok/kanji/internal/domain"
+	"github.com/tiagokriok/kanji/internal/infrastructure/db"
+	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
 )
 
 type SetupRepository struct {

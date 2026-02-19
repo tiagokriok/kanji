@@ -1,6 +1,6 @@
 package providers
 
-import "github.com/tiagokriok/lazytask/internal/domain"
+import "github.com/tiagokriok/kanji/internal/domain"
 
 type LocalProvider struct{}
 

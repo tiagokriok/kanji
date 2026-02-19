@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/tiagokriok/lazytask/internal/domain"
+	"github.com/tiagokriok/kanji/internal/domain"
 )
 
 var uiHexColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)

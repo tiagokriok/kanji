@@ -16,8 +16,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/tiagokriok/lazytask/internal/application"
-	"github.com/tiagokriok/lazytask/internal/domain"
+	"github.com/tiagokriok/kanji/internal/application"
+	"github.com/tiagokriok/kanji/internal/domain"
 )
 
 type viewMode int
@@ -819,7 +819,7 @@ func openDescriptionEditorCmd(initial string) tea.Cmd {
 		}
 	}
 
-	tmpFile, err := os.CreateTemp("", "lazytask-description-*.md")
+	tmpFile, err := os.CreateTemp("", "kanji-description-*.md")
 	if err != nil {
 		return func() tea.Msg {
 			return descriptionEditedMsg{err: err}

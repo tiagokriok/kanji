@@ -10,12 +10,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/tiagokriok/lazytask/internal/application"
-	"github.com/tiagokriok/lazytask/internal/domain"
-	"github.com/tiagokriok/lazytask/internal/infrastructure/db"
-	"github.com/tiagokriok/lazytask/internal/infrastructure/providers"
-	"github.com/tiagokriok/lazytask/internal/infrastructure/repositories"
-	"github.com/tiagokriok/lazytask/internal/ui"
+	"github.com/tiagokriok/kanji/internal/application"
+	"github.com/tiagokriok/kanji/internal/domain"
+	"github.com/tiagokriok/kanji/internal/infrastructure/db"
+	"github.com/tiagokriok/kanji/internal/infrastructure/providers"
+	"github.com/tiagokriok/kanji/internal/infrastructure/repositories"
+	"github.com/tiagokriok/kanji/internal/ui"
 )
 
 func main() {

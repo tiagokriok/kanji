@@ -1,5 +1,5 @@
 ## -----------------------------------------------------------------------------
-## lazytask - Developer Makefile
+## kanji - Developer Makefile
 ## -----------------------------------------------------------------------------
 ## Usage:
 ##   make help
@@ -9,7 +9,7 @@
 ##
 ## Notes:
 ## - All paths and commands are overridable at invocation time:
-##     make run DB_PATH=/tmp/lazytask/app.db
+##     make run DB_PATH=/tmp/kanji/app.db
 ## - This Makefile intentionally exposes granular targets for daily workflows.
 ## -----------------------------------------------------------------------------
 
@@ -29,7 +29,7 @@ SHELL := /bin/bash
 ## -----------------------------------------------------------------------------
 ## Core variables (override with `make <target> VAR=value`)
 ## -----------------------------------------------------------------------------
-APP_NAME            ?= lazytask
+APP_NAME            ?= kanji
 MAIN_PKG            ?= ./cmd/app
 OUT_DIR             ?= ./bin
 BIN_PATH            ?= $(OUT_DIR)/$(APP_NAME)
@@ -60,7 +60,7 @@ ARGS                ?=
 
 help: ## Show available targets with descriptions
 	@echo ""
-	@echo "lazytask Makefile"
+	@echo "kanji Makefile"
 	@echo "--------------"
 	@echo "Key variables:"
 	@echo "  APP_NAME=$(APP_NAME)"
@@ -74,7 +74,7 @@ help: ## Show available targets with descriptions
 	@echo "Examples:"
 	@echo "  make run"
 	@echo "  make migrate seed"
-	@echo "  make run DB_PATH=/tmp/lazytask.db"
+	@echo "  make run DB_PATH=/tmp/kanji.db"
 	@echo "  make goose-create NAME=add_new_table"
 	@echo ""
 

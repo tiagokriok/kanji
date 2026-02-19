@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	uiStateAppName  = "lazytask"
+	uiStateAppName  = "kanji"
 	uiStateFileName = "state.json"
 )
 

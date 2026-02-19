@@ -1,4 +1,4 @@
-# lazytask
+# kanji
 
 Local-first TUI task manager MVP in Go.
 
@@ -23,7 +23,7 @@ Hexagonal (Ports & Adapters):
 
 Default DB path:
 
-- `~/.config/lazytask/app.db`
+- `~/.config/kanji/app.db`
 
 Override with:
 
@@ -40,7 +40,7 @@ go run ./cmd/app --migrate
 Or with goose directly:
 
 ```bash
-go run github.com/pressly/goose/v3/cmd/goose -dir internal/infrastructure/db/migrations sqlite3 ~/.config/lazytask/app.db up
+go run github.com/pressly/goose/v3/cmd/goose -dir internal/infrastructure/db/migrations sqlite3 ~/.config/kanji/app.db up
 ```
 
 ### Seed
