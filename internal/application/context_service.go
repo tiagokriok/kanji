@@ -3,12 +3,21 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/tiagokriok/kanji/internal/domain"
 )
+
+var hexColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+type CreateBoardColumnInput struct {
+	Name  string
+	Color string
+}
 
 type ContextService struct {
 	repo domain.SetupRepository
@@ -67,6 +76,19 @@ func (s *ContextService) RenameWorkspace(ctx context.Context, workspaceID, name 
 }
 
 func (s *ContextService) CreateBoard(ctx context.Context, workspaceID, name string) (domain.Board, error) {
+	defaults := defaultColumnSpecs()
+	columns := make([]CreateBoardColumnInput, 0, len(defaults))
+	for _, d := range defaults {
+		columns = append(columns, CreateBoardColumnInput{Name: d.Name, Color: d.Color})
+	}
+	return s.CreateBoardWithColumns(ctx, workspaceID, name, columns)
+}
+
+func (s *ContextService) CreateBoardWithColumns(
+	ctx context.Context,
+	workspaceID, name string,
+	columns []CreateBoardColumnInput,
+) (domain.Board, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	name = strings.TrimSpace(name)
 	if workspaceID == "" {
@@ -74,6 +96,9 @@ func (s *ContextService) CreateBoard(ctx context.Context, workspaceID, name stri
 	}
 	if name == "" {
 		return domain.Board{}, errors.New("board name is required")
+	}
+	if len(columns) == 0 {
+		return domain.Board{}, errors.New("at least one column is required")
 	}
 
 	board := domain.Board{
@@ -86,18 +111,34 @@ func (s *ContextService) CreateBoard(ctx context.Context, workspaceID, name stri
 		return domain.Board{}, err
 	}
 
-	defaults := defaultColumnSpecs()
-	for _, d := range defaults {
+	position := 1
+	created := 0
+	for i, input := range columns {
+		columnName := strings.TrimSpace(input.Name)
+		if columnName == "" {
+			continue
+		}
+		color := strings.ToUpper(strings.TrimSpace(input.Color))
+		if !hexColorPattern.MatchString(color) {
+			return domain.Board{}, fmt.Errorf("column %d color must be HEX (#RRGGBB)", i+1)
+		}
+
 		c := domain.Column{
 			ID:       uuid.NewString(),
 			BoardID:  board.ID,
-			Name:     d.Name,
-			Color:    d.Color,
-			Position: d.Position,
+			Name:     columnName,
+			Color:    color,
+			Position: position,
 		}
 		if err := s.repo.CreateColumn(ctx, c); err != nil {
 			return domain.Board{}, err
 		}
+		position++
+		created++
+	}
+
+	if created == 0 {
+		return domain.Board{}, errors.New("at least one column name is required")
 	}
 
 	return board, nil
