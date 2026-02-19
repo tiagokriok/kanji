@@ -440,6 +440,7 @@ type Model struct {
 	contextEditMode  contextEditMode
 	contextEditInput textinput.Model
 	state            persistedUIState
+	editingDescTask  string
 
 	statusLine string
 	err        error
@@ -565,6 +566,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.comments = msg.comments
 		return m, nil
+	case descriptionEditedMsg:
+		if m.editingDescTask == "" {
+			return m, nil
+		}
+		taskID := m.editingDescTask
+		m.editingDescTask = ""
+		if msg.err != nil {
+			m.err = msg.err
+			m.statusLine = fmt.Sprintf("editor error: %v", msg.err)
+			return m, nil
+		}
+		return m, m.updateTaskDescriptionCmd(taskID, msg.content)
 	case opResultMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -669,11 +682,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !ok {
 				return m, nil
 			}
-			m.inputMode = inputEditDescription
-			m.textArea.SetValue(task.DescriptionMD)
-			m.textArea.Focus()
-			m.statusLine = "Edit description (Ctrl+S save, Esc cancel)"
-			return m, nil
+			return m, m.startExternalDescriptionEdit(task)
 		case key.Matches(msg, m.keys.CycleStatus):
 			m.cycleColumnFilter()
 			return m, m.loadTasksCmd()
@@ -996,6 +1005,12 @@ func (m *Model) startEditTaskForm(task domain.Task) {
 	m.taskForm = form
 	m.inputMode = inputTaskForm
 	m.statusLine = "Edit task"
+}
+
+func (m *Model) startExternalDescriptionEdit(task domain.Task) tea.Cmd {
+	m.editingDescTask = task.ID
+	m.statusLine = ""
+	return openDescriptionEditorCmd(task.DescriptionMD)
 }
 
 func summarizeDescription(description string) string {
@@ -2692,11 +2707,7 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		m.inputMode = inputEditDescription
-		m.textArea.SetValue(task.DescriptionMD)
-		m.textArea.Focus()
-		m.statusLine = "Edit description (Ctrl+S save, Esc cancel)"
-		return m, nil
+		return m, m.startExternalDescriptionEdit(task)
 	case "cycle_status":
 		m.cycleColumnFilter()
 		return m, m.loadTasksCmd()
