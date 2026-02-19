@@ -85,25 +85,39 @@ func (m Model) renderListFilterBar(width int) string {
 func (m Model) renderListView(width, height int) string {
 	panelContentWidth := boxContentWidth(width, 1, true)
 	panelContentHeight := boxContentHeight(height, true)
+	innerWidth := max(12, panelContentWidth-2)
+
+	selectedCount := 0
+	totalCount := len(m.tasks)
+	if totalCount > 0 {
+		selectedCount = m.selected
+		if selectedCount < 0 {
+			selectedCount = 0
+		}
+		if selectedCount >= totalCount {
+			selectedCount = totalCount - 1
+		}
+		selectedCount++
+	}
+	counterText := fmt.Sprintf("%d of %d", selectedCount, totalCount)
 
 	if len(m.tasks) == 0 {
 		empty := lipgloss.NewStyle().
-			Width(panelContentWidth).
+			Width(innerWidth).
 			Height(panelContentHeight).
 			Align(lipgloss.Center, lipgloss.Center).
 			Foreground(lipgloss.Color("245")).
 			Render("No tasks yet.\nPress n to create one.")
-		return lipgloss.NewStyle().
+		panel := lipgloss.NewStyle().
 			Width(panelContentWidth).
 			Height(panelContentHeight).
 			Padding(0, 1).
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("250")).
 			Render(empty)
+		return withBottomCounter(panel, counterText)
 	}
 
-	// Panel has horizontal padding (0,1), so table width must fit that inner area.
-	innerWidth := max(12, panelContentWidth-2)
 	visibleRows := max(2, panelContentHeight) // Includes table header row.
 	visibleTaskRows := max(1, visibleRows-1)
 
@@ -162,6 +176,7 @@ func (m Model) renderListView(width, height int) string {
 		BorderRow(false).
 		BorderHeader(false).
 		Width(tableWidth).
+		Height(visibleRows).
 		Wrap(false).
 		Offset(offset).
 		StyleFunc(func(row, col int) lipgloss.Style {
@@ -197,13 +212,55 @@ func (m Model) renderListView(width, height int) string {
 			}
 		})
 
-	return lipgloss.NewStyle().
+	panel := lipgloss.NewStyle().
 		Width(panelContentWidth).
 		Height(panelContentHeight).
 		Padding(0, 1).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("250")).
 		Render(t.String())
+
+	return withBottomCounter(panel, counterText)
+}
+
+func withBottomCounter(panel, counter string) string {
+	if strings.TrimSpace(counter) == "" {
+		return panel
+	}
+
+	lines := strings.Split(panel, "\n")
+	if len(lines) == 0 {
+		return panel
+	}
+
+	panelWidth := lipgloss.Width(lines[len(lines)-1])
+	if panelWidth < 4 {
+		return panel
+	}
+
+	counterText := " " + strings.TrimSpace(counter) + " "
+	innerWidth := panelWidth - 2 // width between rounded corners
+	if lipgloss.Width(counterText) > innerWidth {
+		trimmed := truncate(strings.TrimSpace(counter), max(1, innerWidth-2))
+		counterText = " " + trimmed + " "
+		if lipgloss.Width(counterText) > innerWidth {
+			counterText = truncate(strings.TrimSpace(counter), innerWidth)
+		}
+	}
+
+	fillWidth := innerWidth - lipgloss.Width(counterText)
+	if fillWidth < 0 {
+		fillWidth = 0
+	}
+
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+	counterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
+	bottomLine := borderStyle.Render("╰"+strings.Repeat("─", fillWidth)) +
+		counterStyle.Render(counterText) +
+		borderStyle.Render("╯")
+
+	lines[len(lines)-1] = bottomLine
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderListFooter(width int) string {
