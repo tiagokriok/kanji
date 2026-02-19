@@ -41,29 +41,47 @@ func (m Model) renderDetailView(width, height int) string {
 	metaLine := strings.Join(meta, " | ")
 
 	descTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("221")).Render("Description")
-	desc := renderMarkdownMinimal(task.DescriptionMD)
+	maxDescLines := max(2, contentHeight-5)
+	maxDescWidth := max(12, contentWidth-4)
+	descPreview := previewMarkdown(task.DescriptionMD, maxDescLines, maxDescWidth)
+	desc := renderMarkdownMinimal(descPreview)
 	if strings.TrimSpace(desc) == "" {
 		desc = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("(empty)")
 	}
 
-	commentsTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("221")).Render("Comments")
-	commentLines := make([]string, 0, len(m.comments))
-	if len(m.comments) == 0 {
-		commentLines = append(commentLines, lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("(none)"))
-	}
-	for _, c := range m.comments {
-		author := "anon"
-		if c.Author != nil && *c.Author != "" {
-			author = *c.Author
-		}
-		timestamp := m.formatCommentDateTime(c.CreatedAt)
-		body := renderMarkdownMinimal(c.BodyMD)
-		commentLines = append(commentLines, fmt.Sprintf("%s  %s\n%s", author, timestamp, indentLines(body, "  ")))
-	}
-
-	content := []string{header, metaLine, "", descTitle, desc, "", commentsTitle, strings.Join(commentLines, "\n\n")}
+	content := []string{header, metaLine, "", descTitle, desc}
 	joined := strings.Join(content, "\n")
 	return panelStyle.Render(joined)
+}
+
+func previewMarkdown(md string, maxLines, maxLineWidth int) string {
+	if strings.TrimSpace(md) == "" {
+		return ""
+	}
+	if maxLines < 1 {
+		maxLines = 1
+	}
+	if maxLineWidth < 4 {
+		maxLineWidth = 4
+	}
+
+	source := strings.Split(md, "\n")
+	out := make([]string, 0, min(len(source), maxLines))
+	for i := 0; i < len(source) && len(out) < maxLines; i++ {
+		out = append(out, truncate(source[i], maxLineWidth))
+	}
+
+	if len(source) > maxLines && len(out) > 0 {
+		last := strings.TrimSpace(out[len(out)-1])
+		if last == "" {
+			last = "..."
+		} else if !strings.HasSuffix(last, "...") {
+			last = truncate(last, max(4, maxLineWidth-3)) + "..."
+		}
+		out[len(out)-1] = last
+	}
+
+	return strings.Join(out, "\n")
 }
 
 func renderMarkdownMinimal(md string) string {
@@ -88,15 +106,4 @@ func renderMarkdownMinimal(md string) string {
 		}
 	}
 	return strings.Join(out, "\n")
-}
-
-func indentLines(s, prefix string) string {
-	if s == "" {
-		return ""
-	}
-	lines := strings.Split(s, "\n")
-	for i := range lines {
-		lines[i] = prefix + lines[i]
-	}
-	return strings.Join(lines, "\n")
 }
