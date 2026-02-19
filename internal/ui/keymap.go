@@ -18,6 +18,7 @@ type keyMap struct {
 	ClearSearch     key.Binding
 	ShowFilters     key.Binding
 	OpenWorkspace   key.Binding
+	OpenBoardPanel  key.Binding
 	PrevBoard       key.Binding
 	NextBoard       key.Binding
 	ShowKeybinds    key.Binding
@@ -47,6 +48,7 @@ func newKeyMap() keyMap {
 		ClearSearch:     key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "clear search")),
 		ShowFilters:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "filters")),
 		OpenWorkspace:   key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "workspaces")),
+		OpenBoardPanel:  key.NewBinding(key.WithKeys("B"), key.WithHelp("B", "board manager")),
 		PrevBoard:       key.NewBinding(key.WithKeys("["), key.WithHelp("[", "prev board")),
 		NextBoard:       key.NewBinding(key.WithKeys("]"), key.WithHelp("]", "next board")),
 		ShowKeybinds:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keybinds")),

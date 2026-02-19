@@ -375,6 +375,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.OpenWorkspace):
 			m.openContextPanel(contextWorkspace)
 			return m, textinput.Blink
+		case key.Matches(msg, m.keys.OpenBoardPanel):
+			m.openContextPanel(contextBoard)
+			return m, textinput.Blink
 		case key.Matches(msg, m.keys.PrevBoard):
 			changed, err := m.switchBoardByOffset(-1)
 			if err != nil {
@@ -1398,6 +1401,9 @@ func (m Model) updateContextPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.OpenWorkspace):
 			m.openContextPanel(contextWorkspace)
 			return m, textinput.Blink
+		case key.Matches(msg, m.keys.OpenBoardPanel):
+			m.openContextPanel(contextBoard)
+			return m, textinput.Blink
 		case key.Matches(msg, m.keys.Up):
 			m.contextSelected--
 			m.clampContextSelection()
@@ -1833,6 +1839,7 @@ func (m Model) keybindEntries() []keybindEntry {
 		{ID: "search", Key: "/", Label: "Search"},
 		{ID: "open_filters", Key: "f", Label: "Open filter/sort panel"},
 		{ID: "open_workspaces", Key: "w", Label: "Open workspace switcher"},
+		{ID: "open_board_panel", Key: "B", Label: "Open board manager"},
 		{ID: "prev_board", Key: "[", Label: "Previous board"},
 		{ID: "next_board", Key: "]", Label: "Next board"},
 		{ID: "toggle_details", Key: "d", Label: "Toggle details pane"},
@@ -2028,6 +2035,9 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "open_workspaces":
 		m.openContextPanel(contextWorkspace)
+		return m, textinput.Blink
+	case "open_board_panel":
+		m.openContextPanel(contextBoard)
 		return m, textinput.Blink
 	case "prev_board":
 		changed, err := m.switchBoardByOffset(-1)
@@ -2311,7 +2321,7 @@ func (m Model) renderFooter() string {
 		inputLine = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(m.textArea.View())
 	}
 
-	shortcuts := "?:keybinds w:workspaces [ ]:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
+	shortcuts := "?:keybinds w:workspaces B:board-manager [ ]:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " x:clear-search"
 	}
