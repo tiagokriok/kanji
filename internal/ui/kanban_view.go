@@ -15,9 +15,12 @@ func (m Model) renderKanbanView(height int) string {
 	columnWidth := max(24, (m.width-4)/max(1, len(m.columns)))
 	cards := make([]string, 0, len(m.columns))
 	for ci, col := range m.columns {
-		headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("221")).Padding(0, 1)
+		headerStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorFromHexOrDefault(col.Color, "221")).
+			Padding(0, 1)
 		if ci == m.activeColumn {
-			headerStyle = headerStyle.Background(lipgloss.Color("58")).Foreground(lipgloss.Color("230"))
+			headerStyle = headerStyle.Background(lipgloss.Color("58"))
 		}
 
 		rows := []string{headerStyle.Width(columnWidth - 2).Render(fmt.Sprintf("%s", col.Name))}

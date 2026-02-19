@@ -60,8 +60,15 @@ func (m Model) renderListScreen() string {
 
 func (m Model) renderListFilterBar(width int) string {
 	contentWidth := boxContentWidth(width, 1, true)
+	statusFilterValue := m.statusFilterLabel()
+	if m.filterIndex >= 0 && strings.TrimSpace(m.columnFilter) != "" {
+		statusFilterValue = lipgloss.NewStyle().
+			Foreground(m.colorForColumnID(m.columnFilter)).
+			Bold(true).
+			Render(statusFilterValue)
+	}
 	filters := []string{
-		fmt.Sprintf("Status: %s", m.statusFilterLabel()),
+		fmt.Sprintf("Status: %s", statusFilterValue),
 		fmt.Sprintf("Due: %s", m.dueFilterLabel()),
 	}
 	if m.priorityFilter >= 0 {
@@ -233,17 +240,14 @@ func (m Model) renderListView(width, height int) string {
 	taskContentWidth := max(8, tableWidth-fixedTailWidth-tableGutterReserve)
 	rows := make([][]string, 0, len(m.tasks))
 	for _, task := range m.tasks {
-		column := "-"
-		if task.ColumnID != nil {
-			column = m.columnName(*task.ColumnID)
-		}
+		status := m.statusLabelForTask(task)
 		due := "-"
 		if task.DueAt != nil {
 			due = m.formatDueDate(*task.DueAt)
 		}
 		rows = append(rows, []string{
 			truncate(task.Title, taskContentWidth),
-			truncate(column, statusContentWidth),
+			truncate(status, statusContentWidth),
 			truncate(due, dueContentWidth),
 			fmt.Sprintf("p%d", task.Priority),
 		})
@@ -276,7 +280,11 @@ func (m Model) renderListView(width, height int) string {
 			if row >= 0 {
 				taskIndex := row + offset
 				if taskIndex >= 0 && taskIndex < len(m.tasks) {
-					priority := normalizePriority(m.tasks[taskIndex].Priority)
+					task := m.tasks[taskIndex]
+					if col == 1 {
+						style = style.Foreground(m.statusColorForTask(task)).Bold(true)
+					}
+					priority := normalizePriority(task.Priority)
 					priorityColor := priorityColor(priority)
 					if col == 3 {
 						style = style.Foreground(priorityColor).Bold(true)

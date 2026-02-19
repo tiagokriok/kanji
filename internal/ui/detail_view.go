@@ -31,12 +31,14 @@ func (m Model) renderDetailView(width, height int) string {
 	if task.DueAt != nil {
 		meta = append(meta, fmt.Sprintf("Due: %s", m.formatDueDate(*task.DueAt)))
 	}
-	if task.ColumnID != nil {
-		meta = append(meta, fmt.Sprintf("Status: %s", m.columnName(*task.ColumnID)))
-	} else if task.Status != nil && strings.TrimSpace(*task.Status) != "" {
-		meta = append(meta, fmt.Sprintf("Status: %s", *task.Status))
+	if task.ColumnID != nil || (task.Status != nil && strings.TrimSpace(*task.Status) != "") {
+		statusValue := lipgloss.NewStyle().
+			Foreground(m.statusColorForTask(task)).
+			Bold(true).
+			Render(m.statusLabelForTask(task))
+		meta = append(meta, fmt.Sprintf("Status: %s", statusValue))
 	}
-	metaLine := lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render(strings.Join(meta, " | "))
+	metaLine := strings.Join(meta, " | ")
 
 	descTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("221")).Render("Description")
 	desc := renderMarkdownMinimal(task.DescriptionMD)
