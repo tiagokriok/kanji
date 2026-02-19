@@ -101,29 +101,37 @@ func (m Model) renderWorkspaceBoardStrip() string {
 	prev := (current - 1 + len(m.boards)) % len(m.boards)
 	next := (current + 1) % len(m.boards)
 
-	prevName := truncate(strings.TrimSpace(m.boards[prev].Name), 20)
-	currName := truncate(strings.TrimSpace(m.boards[current].Name), 20)
-	nextName := truncate(strings.TrimSpace(m.boards[next].Name), 20)
-	if prevName == "" {
-		prevName = "-"
-	}
-	if currName == "" {
-		currName = "-"
-	}
-	if nextName == "" {
-		nextName = "-"
-	}
-
 	prevStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	currStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114")).Bold(true)
 	nextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
-	return fmt.Sprintf("%s %s | %s | %s",
-		workspaceLabel,
-		prevStyle.Render(prevName),
-		currStyle.Render(currName),
-		nextStyle.Render(nextName),
-	)
+	type boardSlot struct {
+		index int
+		style lipgloss.Style
+	}
+	slots := []boardSlot{
+		{index: prev, style: prevStyle},
+		{index: current, style: currStyle},
+		{index: next, style: nextStyle},
+	}
+
+	seen := map[string]struct{}{}
+	segments := make([]string, 0, 3)
+	for _, slot := range slots {
+		board := m.boards[slot.index]
+		if _, ok := seen[board.ID]; ok {
+			continue
+		}
+		seen[board.ID] = struct{}{}
+
+		name := truncate(strings.TrimSpace(board.Name), 20)
+		if name == "" {
+			name = "-"
+		}
+		segments = append(segments, slot.style.Render(name))
+	}
+
+	return workspaceLabel + " " + strings.Join(segments, " | ")
 }
 
 func withTopBorderLabel(panel, label string) string {
