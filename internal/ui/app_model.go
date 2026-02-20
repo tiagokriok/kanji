@@ -77,10 +77,23 @@ type taskForm struct {
 	title       textinput.Model
 	description textinput.Model
 	dueDate     textinput.Model
-	priority    textinput.Model
-	status      textinput.Model
 
 	descriptionFull string
+	priorityIndex   int
+	statusIndex     int
+	statusOptions   []taskStatusOption
+}
+
+type taskPriorityOption struct {
+	Value int
+	Label string
+}
+
+type taskStatusOption struct {
+	ColumnID string
+	Status   string
+	Label    string
+	ColorHex string
 }
 
 type dueFilterMode int
@@ -113,6 +126,15 @@ var boardColorPickerPalette = []string{
 	"#34D399",
 	"#FACC15",
 	"#9CA3AF",
+}
+
+var taskPriorityOptions = []taskPriorityOption{
+	{Value: 0, Label: "Critical"},
+	{Value: 1, Label: "Urgent"},
+	{Value: 2, Label: "High"},
+	{Value: 3, Label: "Medium"},
+	{Value: 4, Label: "Low"},
+	{Value: 5, Label: "None"},
 }
 
 type boardColumnFormRow struct {
@@ -311,45 +333,123 @@ func (f *boardCreateForm) removeFocusedColumn() bool {
 	return true
 }
 
-func (f *taskForm) fields() []*textinput.Model {
-	return []*textinput.Model{&f.title, &f.description, &f.dueDate, &f.priority, &f.status}
-}
-
-func (f *taskForm) currentField() *textinput.Model {
-	fields := f.fields()
-	if f.focus < 0 {
-		f.focus = 0
+func (f *taskForm) currentInputField() *textinput.Model {
+	switch f.focus {
+	case taskFieldTitle:
+		return &f.title
+	case taskFieldDescription:
+		return &f.description
+	case taskFieldDueDate:
+		return &f.dueDate
+	default:
+		return nil
 	}
-	if f.focus >= len(fields) {
-		f.focus = len(fields) - 1
-	}
-	return fields[f.focus]
 }
 
 func (f *taskForm) setFocus(index int) {
-	fields := f.fields()
-	if len(fields) == 0 {
-		f.focus = 0
-		return
-	}
 	if index < 0 {
-		index = len(fields) - 1
+		index = taskFieldCount - 1
 	}
-	if index >= len(fields) {
+	if index >= taskFieldCount {
 		index = 0
 	}
 	f.focus = index
-	for i, field := range fields {
-		if i == f.focus {
-			field.Focus()
-		} else {
-			field.Blur()
-		}
+
+	f.title.Blur()
+	f.description.Blur()
+	f.dueDate.Blur()
+	if field := f.currentInputField(); field != nil {
+		field.Focus()
 	}
 }
 
 func (f *taskForm) moveFocus(delta int) {
 	f.setFocus(f.focus + delta)
+}
+
+func (f *taskForm) clampPriorityIndex() {
+	if len(taskPriorityOptions) == 0 {
+		f.priorityIndex = 0
+		return
+	}
+	if f.priorityIndex < 0 {
+		f.priorityIndex = 0
+	}
+	if f.priorityIndex >= len(taskPriorityOptions) {
+		f.priorityIndex = len(taskPriorityOptions) - 1
+	}
+}
+
+func (f *taskForm) cyclePriority(delta int) bool {
+	if len(taskPriorityOptions) == 0 {
+		return false
+	}
+	f.clampPriorityIndex()
+	f.priorityIndex = (f.priorityIndex + delta + len(taskPriorityOptions)) % len(taskPriorityOptions)
+	return true
+}
+
+func (f *taskForm) selectedPriority() int {
+	f.clampPriorityIndex()
+	return taskPriorityOptions[f.priorityIndex].Value
+}
+
+func (f *taskForm) selectedPriorityLabel() string {
+	f.clampPriorityIndex()
+	option := taskPriorityOptions[f.priorityIndex]
+	return fmt.Sprintf("%d - %s", option.Value, option.Label)
+}
+
+func (f *taskForm) clampStatusIndex() {
+	if len(f.statusOptions) == 0 {
+		f.statusIndex = 0
+		return
+	}
+	if f.statusIndex < 0 {
+		f.statusIndex = 0
+	}
+	if f.statusIndex >= len(f.statusOptions) {
+		f.statusIndex = len(f.statusOptions) - 1
+	}
+}
+
+func (f *taskForm) cycleStatus(delta int) bool {
+	if len(f.statusOptions) == 0 {
+		return false
+	}
+	f.clampStatusIndex()
+	f.statusIndex = (f.statusIndex + delta + len(f.statusOptions)) % len(f.statusOptions)
+	return true
+}
+
+func (f *taskForm) selectedStatus() (*string, *string) {
+	if len(f.statusOptions) == 0 {
+		return nil, nil
+	}
+	f.clampStatusIndex()
+	option := f.statusOptions[f.statusIndex]
+
+	var columnID *string
+	if option.ColumnID != "" {
+		value := option.ColumnID
+		columnID = &value
+	}
+
+	var status *string
+	if option.Status != "" {
+		value := option.Status
+		status = &value
+	}
+
+	return columnID, status
+}
+
+func (f *taskForm) selectedStatusLabel() string {
+	if len(f.statusOptions) == 0 {
+		return "(none)"
+	}
+	f.clampStatusIndex()
+	return f.statusOptions[f.statusIndex].Label
 }
 
 func (f *taskForm) modeLabel() string {
@@ -882,14 +982,16 @@ func (m Model) updateInputMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if mode == inputTaskForm && m.taskForm != nil {
-		field := m.taskForm.currentField()
-		prevDescription := m.taskForm.description.Value()
-		var cmd tea.Cmd
-		*field, cmd = field.Update(msg)
-		if m.taskForm.focus == taskFieldDescription && m.taskForm.description.Value() != prevDescription {
-			m.taskForm.descriptionFull = m.taskForm.description.Value()
+		if field := m.taskForm.currentInputField(); field != nil {
+			prevDescription := m.taskForm.description.Value()
+			var cmd tea.Cmd
+			*field, cmd = field.Update(msg)
+			if m.taskForm.focus == taskFieldDescription && m.taskForm.description.Value() != prevDescription {
+				m.taskForm.descriptionFull = m.taskForm.description.Value()
+			}
+			return m, cmd
 		}
-		return m, cmd
+		return m, nil
 	}
 
 	var cmd tea.Cmd
@@ -910,6 +1012,20 @@ func (m *Model) handleTaskFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	case "shift+tab", "up":
 		m.taskForm.moveFocus(-1)
 		return m, textinput.Blink, true
+	case "left":
+		if m.taskForm.focus == taskFieldPriority && m.taskForm.cyclePriority(-1) {
+			return m, nil, true
+		}
+		if m.taskForm.focus == taskFieldStatus && m.taskForm.cycleStatus(-1) {
+			return m, nil, true
+		}
+	case "right":
+		if m.taskForm.focus == taskFieldPriority && m.taskForm.cyclePriority(1) {
+			return m, nil, true
+		}
+		if m.taskForm.focus == taskFieldStatus && m.taskForm.cycleStatus(1) {
+			return m, nil, true
+		}
 	case "ctrl+s":
 		model, cmd := m.submitTaskForm()
 		return model, cmd, true
@@ -925,6 +1041,15 @@ func (m *Model) handleTaskFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		}
 		m.taskForm.moveFocus(1)
 		return m, textinput.Blink, true
+	case "0", "1", "2", "3", "4", "5":
+		if m.taskForm.focus == taskFieldPriority {
+			index, err := strconv.Atoi(msg.String())
+			if err == nil && index >= 0 && index < len(taskPriorityOptions) {
+				m.taskForm.priorityIndex = index
+				m.taskForm.clampPriorityIndex()
+			}
+			return m, nil, true
+		}
 	}
 
 	return m, nil, false
@@ -956,20 +1081,20 @@ func newTaskFormInput(placeholder, value string, limit int) textinput.Model {
 }
 
 func (m *Model) startCreateTaskForm() {
-	status := ""
-	if len(m.columns) > 0 {
-		status = m.columns[0].Name
-	}
+	statusOptions, statusIndex := m.buildTaskStatusOptions(nil)
 
 	form := &taskForm{
 		mode:            taskFormCreate,
 		title:           newTaskFormInput("Title", "", 512),
 		description:     newTaskFormInput("Description", "", 2048),
 		dueDate:         newTaskFormInput(m.dueDatePlaceholder(), "", 32),
-		priority:        newTaskFormInput("Priority 0-5", "0", 2),
-		status:          newTaskFormInput("Status", status, 64),
 		descriptionFull: "",
+		priorityIndex:   0,
+		statusOptions:   statusOptions,
+		statusIndex:     statusIndex,
 	}
+	form.clampPriorityIndex()
+	form.clampStatusIndex()
 	form.setFocus(taskFieldTitle)
 
 	m.taskForm = form
@@ -978,16 +1103,15 @@ func (m *Model) startCreateTaskForm() {
 }
 
 func (m *Model) startEditTaskForm(task domain.Task) {
-	status := ""
-	if task.ColumnID != nil {
-		status = m.columnName(*task.ColumnID)
-	} else if task.Status != nil {
-		status = *task.Status
-	}
-
 	due := ""
 	if task.DueAt != nil {
 		due = m.formatDueDate(*task.DueAt)
+	}
+
+	statusOptions, statusIndex := m.buildTaskStatusOptions(&task)
+	priorityIndex := normalizePriority(task.Priority)
+	if priorityIndex > 5 {
+		priorityIndex = 5
 	}
 
 	form := &taskForm{
@@ -996,15 +1120,68 @@ func (m *Model) startEditTaskForm(task domain.Task) {
 		title:           newTaskFormInput("Title", task.Title, 512),
 		description:     newTaskFormInput("Description", summarizeDescription(task.DescriptionMD), 2048),
 		dueDate:         newTaskFormInput(m.dueDatePlaceholder(), due, 32),
-		priority:        newTaskFormInput("Priority 0-5", strconv.Itoa(task.Priority), 2),
-		status:          newTaskFormInput("Status", status, 64),
 		descriptionFull: task.DescriptionMD,
+		priorityIndex:   priorityIndex,
+		statusOptions:   statusOptions,
+		statusIndex:     statusIndex,
 	}
+	form.clampPriorityIndex()
+	form.clampStatusIndex()
 	form.setFocus(taskFieldTitle)
 
 	m.taskForm = form
 	m.inputMode = inputTaskForm
 	m.statusLine = "Edit task"
+}
+
+func (m Model) buildTaskStatusOptions(task *domain.Task) ([]taskStatusOption, int) {
+	options := make([]taskStatusOption, 0, len(m.columns)+1)
+	selected := 0
+
+	if task != nil {
+		options = append(options, taskStatusOption{Label: "(none)"})
+	}
+
+	for _, col := range m.columns {
+		option := taskStatusOption{
+			ColumnID: col.ID,
+			Status:   strings.ToLower(strings.TrimSpace(col.Name)),
+			Label:    col.Name,
+			ColorHex: col.Color,
+		}
+		options = append(options, option)
+		if task != nil && task.ColumnID != nil && *task.ColumnID == col.ID {
+			selected = len(options) - 1
+		}
+	}
+
+	if task != nil && task.ColumnID == nil && task.Status != nil {
+		rawStatus := strings.TrimSpace(*task.Status)
+		if rawStatus != "" {
+			matched := false
+			for i := range options {
+				if strings.EqualFold(options[i].Label, rawStatus) || strings.EqualFold(options[i].Status, rawStatus) {
+					selected = i
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				options = append(options, taskStatusOption{
+					Status: rawStatus,
+					Label:  rawStatus,
+				})
+				selected = len(options) - 1
+			}
+		}
+	}
+
+	if len(options) == 0 {
+		options = append(options, taskStatusOption{Label: "(none)"})
+		selected = 0
+	}
+
+	return options, selected
 }
 
 func (m *Model) startExternalDescriptionEdit(task domain.Task) tea.Cmd {
@@ -1099,24 +1276,14 @@ func (m Model) submitTaskFormCmd() (tea.Cmd, error) {
 		return nil, fmt.Errorf("title is required")
 	}
 
-	priorityRaw := strings.TrimSpace(m.taskForm.priority.Value())
-	if priorityRaw == "" {
-		return nil, fmt.Errorf("priority is required (0-5)")
-	}
-	priority, err := strconv.Atoi(priorityRaw)
-	if err != nil {
-		return nil, fmt.Errorf("priority must be an integer between 0 and 5")
-	}
-	if priority < 0 || priority > 5 {
-		return nil, fmt.Errorf("priority must be between 0 and 5")
-	}
+	priority := m.taskForm.selectedPriority()
 
 	dueAt, err := m.parseDueDateInput(m.taskForm.dueDate.Value())
 	if err != nil {
 		return nil, err
 	}
 
-	columnID, status := m.resolveStatusInput(strings.TrimSpace(m.taskForm.status.Value()), m.taskForm.mode)
+	columnID, status := m.taskForm.selectedStatus()
 	description := strings.TrimSpace(m.taskForm.descriptionFull)
 	if description == "" {
 		description = strings.TrimSpace(m.taskForm.description.Value())
@@ -1164,7 +1331,7 @@ func (m Model) renderTaskFormPanel(base string) string {
 	contentHeight := boxContentHeight(panelHeight, true)
 
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("151")).Render(m.taskForm.modeLabel())
-	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("Tab/Shift+Tab navigate | Ctrl+S save | Ctrl+G edit description in $EDITOR | Esc cancel")
+	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("Tab/Shift+Tab navigate | \u2190/\u2192 select priority/status | 0-5 priority | Ctrl+S save | Ctrl+G edit description in $EDITOR | Esc cancel")
 
 	titleLabel := m.renderTaskFieldLabel(taskFieldTitle, "Title")
 	descLabel := m.renderTaskFieldLabel(taskFieldDescription, "Description")
@@ -1177,6 +1344,18 @@ func (m Model) renderTaskFormPanel(base string) string {
 		descPreview = "(empty)"
 	}
 	descPreviewStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Width(contentWidth - 2)
+	priorityValue := lipgloss.NewStyle().
+		Foreground(priorityColor(m.taskForm.selectedPriority())).
+		Bold(true).
+		Render(m.taskForm.selectedPriorityLabel())
+
+	statusValueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Bold(true)
+	if len(m.taskForm.statusOptions) > 0 {
+		m.taskForm.clampStatusIndex()
+		statusColor := colorFromHexOrDefault(m.taskForm.statusOptions[m.taskForm.statusIndex].ColorHex, "252")
+		statusValueStyle = statusValueStyle.Foreground(statusColor)
+	}
+	statusValue := statusValueStyle.Render(m.taskForm.selectedStatusLabel())
 
 	lines := []string{
 		title,
@@ -1186,8 +1365,15 @@ func (m Model) renderTaskFormPanel(base string) string {
 		fmt.Sprintf("%s %s", descLabel, m.taskForm.description.View()),
 		descPreviewStyle.Render(descPreview),
 		fmt.Sprintf("%s %s", dueLabel, m.taskForm.dueDate.View()),
-		fmt.Sprintf("%s %s", priorityLabel, m.taskForm.priority.View()),
-		fmt.Sprintf("%s %s", statusLabel, m.taskForm.status.View()),
+		fmt.Sprintf("%s %s", priorityLabel, priorityValue),
+		fmt.Sprintf("%s %s", statusLabel, statusValue),
+	}
+
+	if m.taskForm.focus == taskFieldPriority {
+		lines = append(lines, m.renderTaskPrioritySelectorLines(max(12, contentWidth-4))...)
+	}
+	if m.taskForm.focus == taskFieldStatus {
+		lines = append(lines, m.renderTaskStatusSelectorLines(max(12, contentWidth-4), max(4, contentHeight/3))...)
 	}
 
 	panel := lipgloss.NewStyle().
@@ -1199,6 +1385,67 @@ func (m Model) renderTaskFormPanel(base string) string {
 		Render(strings.Join(lines, "\n"))
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+}
+
+func (m Model) renderTaskPrioritySelectorLines(width int) []string {
+	lines := []string{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render("Priority options:"),
+	}
+
+	for i, option := range taskPriorityOptions {
+		base := fmt.Sprintf("  %d) %s", option.Value, option.Label)
+		style := lipgloss.NewStyle().Width(width).Foreground(priorityColor(option.Value))
+		if m.taskForm != nil && i == m.taskForm.priorityIndex {
+			style = style.Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Bold(true)
+		}
+		lines = append(lines, style.Render(base))
+	}
+
+	return lines
+}
+
+func (m Model) renderTaskStatusSelectorLines(width, maxVisible int) []string {
+	lines := []string{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render("Status options:"),
+	}
+	if m.taskForm == nil || len(m.taskForm.statusOptions) == 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("  (none)"))
+		return lines
+	}
+
+	if maxVisible < 1 {
+		maxVisible = 1
+	}
+
+	selected := m.taskForm.statusIndex
+	offset := 0
+	if selected >= maxVisible {
+		offset = selected - maxVisible + 1
+	}
+	maxOffset := max(0, len(m.taskForm.statusOptions)-maxVisible)
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+
+	end := min(len(m.taskForm.statusOptions), offset+maxVisible)
+	if offset > 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("  ↑ more"))
+	}
+	for i := offset; i < end; i++ {
+		option := m.taskForm.statusOptions[i]
+		base := "  " + option.Label
+		color := colorFromHexOrDefault(option.ColorHex, "252")
+		style := lipgloss.NewStyle().Width(width).Foreground(color)
+		if i == selected {
+			style = style.Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Bold(true)
+		}
+		lines = append(lines, style.Render(base))
+	}
+	if end < len(m.taskForm.statusOptions) {
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("  ↓ more"))
+	}
+
+	return lines
 }
 
 func (m Model) renderTaskFieldLabel(field int, label string) string {
