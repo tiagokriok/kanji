@@ -38,7 +38,7 @@ func newKeyMap() keyMap {
 		Down:            key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
 		Left:            key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "left")),
 		Right:           key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "right")),
-		OpenDetails:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open/move")),
+		OpenDetails:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open task")),
 		ToggleDetails:   key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "toggle details")),
 		NewTask:         key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new task")),
 		EditTitle:       key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit title")),

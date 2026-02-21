@@ -520,6 +520,7 @@ type Model struct {
 
 	viewMode     viewMode
 	showDetails  bool
+	showTaskView bool
 	inputMode    inputMode
 	taskForm     *taskForm
 	showKeybinds bool
@@ -541,6 +542,7 @@ type Model struct {
 	contextEditInput textinput.Model
 	state            persistedUIState
 	editingDescTask  string
+	viewTaskID       string
 
 	statusLine string
 	err        error
@@ -620,6 +622,9 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.showTaskView {
+		return m.updateTaskViewer(msg)
+	}
 	if m.showKeybinds {
 		return m.updateKeybindPanel(msg)
 	}
@@ -835,17 +840,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case key.Matches(msg, m.keys.OpenDetails):
-			if m.viewMode == viewKanban {
-				if task, ok := m.currentTask(); ok {
-					return m, m.moveToNextColumnCmd(task)
-				}
-				return m, nil
-			}
-			m.showDetails = true
-			if task, ok := m.currentTask(); ok {
-				return m, m.loadCommentsCmd(task.ID)
-			}
-			return m, nil
+			return m, m.openTaskViewer()
 		case key.Matches(msg, m.keys.MoveTask):
 			if task, ok := m.currentTask(); ok {
 				return m, m.moveToNextColumnCmd(task)
@@ -906,6 +901,9 @@ func (m Model) View() string {
 	}
 	if m.inputMode == inputTaskForm && m.taskForm != nil {
 		return m.renderTaskFormPanel(base)
+	}
+	if m.showTaskView {
+		return m.renderTaskViewerPanel(base)
 	}
 	return base
 }
@@ -1454,6 +1452,60 @@ func (m Model) renderTaskFieldLabel(field int, label string) string {
 		style = style.Foreground(lipgloss.Color("221")).Bold(true)
 	}
 	return style.Render(label + ":")
+}
+
+func (m *Model) openTaskViewer() tea.Cmd {
+	task, ok := m.currentTask()
+	if !ok {
+		return nil
+	}
+	m.showTaskView = true
+	m.viewTaskID = task.ID
+	m.comments = nil
+	return m.loadCommentsCmd(task.ID)
+}
+
+func (m *Model) closeTaskViewer() {
+	m.showTaskView = false
+	m.viewTaskID = ""
+}
+
+func (m Model) viewerTask() (domain.Task, bool) {
+	if strings.TrimSpace(m.viewTaskID) != "" {
+		for _, task := range m.tasks {
+			if task.ID == m.viewTaskID {
+				return task, true
+			}
+		}
+	}
+	return m.currentTask()
+}
+
+func (m Model) updateTaskViewer(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+	case commentsLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.statusLine = msg.err.Error()
+			return m, nil
+		}
+		m.comments = msg.comments
+		return m, nil
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Confirm), key.Matches(msg, m.keys.OpenDetails):
+			m.closeTaskViewer()
+			return m, nil
+		case key.Matches(msg, m.keys.Quit):
+			m.closeTaskViewer()
+			return m, nil
+		}
+	}
+	return m, nil
 }
 
 func (m *Model) openKeybindPanel() {
@@ -2706,7 +2758,7 @@ func (m Model) keybindEntries() []keybindEntry {
 		{ID: "prev_board", Key: "[", Label: "Previous board"},
 		{ID: "next_board", Key: "]", Label: "Next board"},
 		{ID: "toggle_details", Key: "d", Label: "Toggle details pane"},
-		{ID: "open_move", Key: "Enter", Label: "Open details / move in kanban"},
+		{ID: "open_move", Key: "Enter", Label: "Open task viewer"},
 		{ID: "move_task", Key: "m", Label: "Move task to next status"},
 		{ID: "toggle_view", Key: "Tab", Label: "Switch list/kanban"},
 		{ID: "cycle_status", Key: "s", Label: "Cycle status filter"},
@@ -3007,17 +3059,7 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "open_move":
-		if m.viewMode == viewKanban {
-			if task, ok := m.currentTask(); ok {
-				return m, m.moveToNextColumnCmd(task)
-			}
-			return m, nil
-		}
-		m.showDetails = true
-		if task, ok := m.currentTask(); ok {
-			return m, m.loadCommentsCmd(task.ID)
-		}
-		return m, nil
+		return m, m.openTaskViewer()
 	case "move_task":
 		if task, ok := m.currentTask(); ok {
 			return m, m.moveToNextColumnCmd(task)
@@ -3180,7 +3222,7 @@ func (m Model) renderFooter() string {
 		inputLine = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(m.textArea.View())
 	}
 
-	shortcuts := "?:keybinds w:workspaces b:board-manager [ ]:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open/move q:quit"
+	shortcuts := "?:keybinds w:workspaces b:board-manager [ ]:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open-task q:quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " x:clear-search"
 	}

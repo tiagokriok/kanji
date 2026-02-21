@@ -367,7 +367,7 @@ func withBottomCounter(panel, counter string) string {
 
 func (m Model) renderListFooter(width int) string {
 	contentWidth := boxContentWidth(width, 1, true)
-	shortcuts := "?: Keybinds | W: Workspaces | b: Board manager | [: Prev board | ]: Next board | F: Filter/Sort | S: Status | Z: Due | O: Sort | N: Create | /: Search | Enter: Open/Move | Q: Quit"
+	shortcuts := "?: Keybinds | W: Workspaces | b: Board manager | [: Prev board | ]: Next board | F: Filter/Sort | S: Status | Z: Due | O: Sort | N: Create | /: Search | Enter: Open task | Q: Quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " | X: Clear search"
 	}
