@@ -243,7 +243,7 @@ func (m Model) renderListView(width, height int) string {
 		status := m.statusLabelForTask(task)
 		due := "-"
 		if task.DueAt != nil {
-			due = m.formatDueDate(*task.DueAt)
+			due, _ = m.dueDisplay(*task.DueAt)
 		}
 		rows = append(rows, []string{
 			truncate(task.Title, taskContentWidth),
@@ -288,6 +288,14 @@ func (m Model) renderListView(width, height int) string {
 					priorityColor := priorityColor(priority)
 					if col == 3 {
 						style = style.Foreground(priorityColor).Bold(true)
+					}
+					if col == 2 {
+						if task.DueAt == nil {
+							style = style.Foreground(dueColorNoDueSet)
+						} else {
+							_, dueColor := m.dueDisplay(*task.DueAt)
+							style = style.Foreground(dueColor).Bold(true)
+						}
 					}
 				}
 			}

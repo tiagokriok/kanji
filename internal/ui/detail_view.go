@@ -29,7 +29,9 @@ func (m Model) renderDetailView(width, height int) string {
 		Render(fmt.Sprintf("%d", task.Priority))
 	meta = append(meta, fmt.Sprintf("Priority: %s", priorityValue))
 	if task.DueAt != nil {
-		meta = append(meta, fmt.Sprintf("Due: %s", m.formatDueDate(*task.DueAt)))
+		dueText, dueColor := m.dueDisplay(*task.DueAt)
+		dueValue := lipgloss.NewStyle().Foreground(dueColor).Bold(true).Render(dueText)
+		meta = append(meta, fmt.Sprintf("Due: %s", dueValue))
 	}
 	if task.ColumnID != nil || (task.Status != nil && strings.TrimSpace(*task.Status) != "") {
 		statusValue := lipgloss.NewStyle().
