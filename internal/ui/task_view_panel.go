@@ -144,7 +144,7 @@ func (m Model) renderTaskViewerLeftLines(task domain.Task, width, height, scroll
 	lines := []string{
 		titleStyle.Render(truncate(task.Title, max(1, width))),
 		metaStyle.Render(fmt.Sprintf("%s | %s | %s", dueValue, priorityValue, statusValue)),
-		hintStyle.Render("j/k or ↑/↓ scroll description | Enter/Esc close"),
+		hintStyle.Render("j/k or ↑/↓ scroll description | e edit | c comment | Enter/Esc close"),
 	}
 
 	descLines := renderViewerMarkdownLines(task.DescriptionMD, width)

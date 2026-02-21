@@ -544,6 +544,8 @@ type Model struct {
 	editingDescTask  string
 	viewTaskID       string
 	viewDescScroll   int
+	returnTaskView   bool
+	returnTaskID     string
 
 	statusLine string
 	err        error
@@ -688,9 +690,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.err = msg.err
 			m.statusLine = msg.err.Error()
+			m.clearTaskViewerReturn()
 			return m, nil
 		}
 		m.statusLine = ""
+		if m.returnTaskView && strings.TrimSpace(m.returnTaskID) != "" {
+			taskID := m.returnTaskID
+			m.clearTaskViewerReturn()
+			commentsCmd := m.openTaskViewerByID(taskID)
+			return m, tea.Batch(m.loadTasksCmd(), commentsCmd)
+		}
 		return m, m.loadTasksCmd()
 	case tea.KeyMsg:
 		switch {
@@ -929,12 +938,22 @@ func (m Model) updateInputMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Cancel):
 			if mode == inputTaskForm {
 				m.closeTaskForm()
+				if m.returnTaskView && strings.TrimSpace(m.returnTaskID) != "" {
+					taskID := m.returnTaskID
+					m.clearTaskViewerReturn()
+					return m, m.openTaskViewerByID(taskID)
+				}
 				return m, nil
 			}
 			m.inputMode = inputNone
 			m.textInput.Blur()
 			m.textArea.Blur()
 			m.statusLine = ""
+			if mode == inputAddComment && m.returnTaskView && strings.TrimSpace(m.returnTaskID) != "" {
+				taskID := m.returnTaskID
+				m.clearTaskViewerReturn()
+				return m, m.openTaskViewerByID(taskID)
+			}
 			return m, nil
 		case mode == inputTaskForm:
 			if handledModel, cmd, handled := m.handleTaskFormKey(msg); handled {
@@ -965,8 +984,10 @@ func (m Model) updateInputMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if value == "" {
+					m.inputMode = inputAddComment
+					m.textInput.Focus()
 					m.statusLine = "comment is required"
-					return m, nil
+					return m, textinput.Blink
 				}
 				return m, m.addCommentCmd(task.ID, value)
 			}
@@ -1338,11 +1359,19 @@ func (m Model) renderTaskFormPanel(base string) string {
 	priorityLabel := m.renderTaskFieldLabel(taskFieldPriority, "Priority")
 	statusLabel := m.renderTaskFieldLabel(taskFieldStatus, "Status")
 
-	descPreview := m.taskForm.descriptionFull
-	if strings.TrimSpace(descPreview) == "" {
-		descPreview = "(empty)"
+	descPreview := strings.TrimSpace(m.taskForm.descriptionFull)
+	descPreviewLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("Description preview:")
+	descPreviewStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Width(max(12, contentWidth-2))
+	previewLines := []string{}
+	if descPreview == "" {
+		previewLines = []string{"(empty)"}
+	} else {
+		previewLines = wrapViewerText(descPreview, max(12, contentWidth-4))
+		maxPreviewLines := max(3, min(8, contentHeight/3))
+		if len(previewLines) > maxPreviewLines {
+			previewLines = append(previewLines[:maxPreviewLines-1], "...")
+		}
 	}
-	descPreviewStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Width(contentWidth - 2)
 	priorityValue := lipgloss.NewStyle().
 		Foreground(priorityColor(m.taskForm.selectedPriority())).
 		Bold(true).
@@ -1362,10 +1391,13 @@ func (m Model) renderTaskFormPanel(base string) string {
 		"",
 		fmt.Sprintf("%s %s", titleLabel, m.taskForm.title.View()),
 		fmt.Sprintf("%s %s", descLabel, m.taskForm.description.View()),
-		descPreviewStyle.Render(descPreview),
+		descPreviewLabel,
 		fmt.Sprintf("%s %s", dueLabel, m.taskForm.dueDate.View()),
 		fmt.Sprintf("%s %s", priorityLabel, priorityValue),
 		fmt.Sprintf("%s %s", statusLabel, statusValue),
+	}
+	for _, line := range previewLines {
+		lines = append(lines, descPreviewStyle.Render(line))
 	}
 
 	if m.taskForm.focus == taskFieldPriority {
@@ -1460,17 +1492,34 @@ func (m *Model) openTaskViewer() tea.Cmd {
 	if !ok {
 		return nil
 	}
+	return m.openTaskViewerByID(task.ID)
+}
+
+func (m *Model) openTaskViewerByID(taskID string) tea.Cmd {
+	if strings.TrimSpace(taskID) == "" {
+		return nil
+	}
 	m.showTaskView = true
-	m.viewTaskID = task.ID
+	m.viewTaskID = taskID
 	m.viewDescScroll = 0
 	m.comments = nil
-	return m.loadCommentsCmd(task.ID)
+	return m.loadCommentsCmd(taskID)
 }
 
 func (m *Model) closeTaskViewer() {
 	m.showTaskView = false
 	m.viewTaskID = ""
 	m.viewDescScroll = 0
+}
+
+func (m *Model) setTaskViewerReturn(taskID string) {
+	m.returnTaskView = true
+	m.returnTaskID = strings.TrimSpace(taskID)
+}
+
+func (m *Model) clearTaskViewerReturn() {
+	m.returnTaskView = false
+	m.returnTaskID = ""
 }
 
 func (m Model) viewerTask() (domain.Task, bool) {
@@ -1490,6 +1539,16 @@ func (m Model) updateTaskViewer(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
+	case tasksLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.statusLine = msg.err.Error()
+			return m, nil
+		}
+		m.tasks = m.applyActiveFilters(msg.tasks)
+		m.sortTasks(m.tasks)
+		m.ensureSelection()
+		return m, nil
 	case commentsLoadedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -1506,6 +1565,28 @@ func (m Model) updateTaskViewer(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Quit):
 			m.closeTaskViewer()
 			return m, nil
+		case key.Matches(msg, m.keys.EditTitle):
+			task, ok := m.viewerTask()
+			if !ok {
+				return m, nil
+			}
+			m.setTaskViewerReturn(task.ID)
+			m.closeTaskViewer()
+			m.startEditTaskForm(task)
+			return m, textinput.Blink
+		case key.Matches(msg, m.keys.AddComment):
+			task, ok := m.viewerTask()
+			if !ok {
+				return m, nil
+			}
+			m.setTaskViewerReturn(task.ID)
+			m.closeTaskViewer()
+			m.inputMode = inputAddComment
+			m.textInput.SetValue("")
+			m.textInput.Placeholder = "Comment body"
+			m.textInput.Focus()
+			m.statusLine = "Add comment"
+			return m, textinput.Blink
 		case key.Matches(msg, m.keys.Up):
 			if m.viewDescScroll > 0 {
 				m.viewDescScroll--
