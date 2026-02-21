@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/tiagokriok/kanji/internal/domain"
 )
@@ -31,27 +32,30 @@ func (m Model) renderTaskViewerPanel(base string) string {
 	layout := m.taskViewerLayout()
 	leftLines := m.renderTaskViewerLeftLines(task, layout.leftWidth, layout.contentHeight, m.viewDescScroll)
 	rightLines := m.renderTaskViewerRightLines(layout.rightWidth, layout.contentHeight)
-	leftBlock := lipgloss.NewStyle().
-		Width(layout.leftWidth).
-		Height(layout.contentHeight).
-		MaxWidth(layout.leftWidth).
-		MaxHeight(layout.contentHeight).
-		Render(strings.Join(leftLines, "\n"))
-	rightBlock := lipgloss.NewStyle().
-		Width(layout.rightWidth).
-		Height(layout.contentHeight).
-		MaxWidth(layout.rightWidth).
-		MaxHeight(layout.contentHeight).
-		Render(strings.Join(rightLines, "\n"))
-	sepLine := strings.Repeat("│\n", max(0, layout.contentHeight-1)) + "│"
-	separator := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("250")).
-		Height(layout.contentHeight).
-		Render(sepLine)
-	body := lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, separator, rightBlock)
+	separator := "│"
+	totalRowWidth := layout.leftWidth + 1 + layout.rightWidth
+	rows := make([]string, 0, layout.contentHeight)
+	for i := 0; i < layout.contentHeight; i++ {
+		left := ""
+		if i < len(leftLines) {
+			left = clampViewerLine(leftLines[i], layout.leftWidth)
+		}
+		right := ""
+		if i < len(rightLines) {
+			right = clampViewerLine(rightLines[i], layout.rightWidth)
+		}
+		row := padViewerLine(left, layout.leftWidth) + separator + padViewerLine(right, layout.rightWidth)
+		row = ansi.Truncate(row, totalRowWidth, "")
+		row = padViewerLine(row, totalRowWidth)
+		rows = append(rows, row)
+	}
+	body := strings.Join(rows, "\n")
 
 	panel := lipgloss.NewStyle().
-		Width(layout.contentWidth).
+		// Lipgloss width includes padding but excludes borders.
+		// We render rows to `contentWidth` (text area), with 1-char horizontal
+		// padding on each side, so style width must be contentWidth+2.
+		Width(layout.contentWidth+2).
 		Height(layout.contentHeight).
 		Padding(0, 1).
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -158,7 +162,7 @@ func (m Model) renderTaskViewerLeftLines(task domain.Task, width, height, scroll
 	}
 	end := min(len(descLines), scroll+viewport)
 	for i := scroll; i < end; i++ {
-		lines = append(lines, descStyle.Width(width).Render(descLines[i]))
+		lines = append(lines, descStyle.Width(width).Render(ansi.Truncate(descLines[i], max(1, width), "")))
 	}
 	return lines
 }
@@ -192,15 +196,15 @@ func (m Model) renderTaskViewerRightLines(width, height int) []string {
 			author = "unknown"
 		}
 		meta := fmt.Sprintf("%s  %s", author, m.formatCommentDateTime(comment.CreatedAt))
-		lines = append(lines, commentMetaStyle.Render(truncate(meta, max(1, width))))
+		lines = append(lines, commentMetaStyle.Render(ansi.Truncate(meta, max(1, width), "")))
 
 		body := strings.TrimSpace(comment.BodyMD)
 		if body == "" {
 			body = "(empty)"
 		}
-		body = normalizeViewerText(body)
-		for _, bodyLine := range wrapViewerText(body, width-2) {
-			lines = append(lines, commentBodyStyle.Render("  "+bodyLine))
+		for _, bodyLine := range renderViewerMarkdownLinesSafe(body, max(8, width-2)) {
+			clipped := ansi.Truncate(bodyLine, max(1, width-2), "")
+			lines = append(lines, commentBodyStyle.Render("  "+clipped))
 			if len(lines) >= height {
 				return lines[:height]
 			}
@@ -228,6 +232,20 @@ func makeViewerBlankLines(width, count int) []string {
 		lines = append(lines, style.Render(""))
 	}
 	return lines
+}
+
+func clampViewerLine(line string, width int) string {
+	line = strings.ReplaceAll(line, "\r", "")
+	line = strings.ReplaceAll(line, "\n", " ")
+	return ansi.Truncate(line, max(1, width), "")
+}
+
+func padViewerLine(line string, width int) string {
+	lineWidth := lipgloss.Width(line)
+	if lineWidth >= width {
+		return line
+	}
+	return line + strings.Repeat(" ", width-lineWidth)
 }
 
 func wrapViewerText(text string, width int) []string {
@@ -288,6 +306,34 @@ func renderViewerMarkdownLines(md string, width int) []string {
 		return []string{"(empty)"}
 	}
 	return strings.Split(rendered, "\n")
+}
+
+func renderViewerMarkdownLinesSafe(md string, width int) []string {
+	md = strings.TrimSpace(normalizeViewerText(md))
+	if md == "" {
+		return []string{"(empty)"}
+	}
+
+	rendered, err := renderMarkdownWithGlamour(md, width)
+	if err != nil {
+		return wrapViewerText(md, width)
+	}
+	rendered = ansi.Strip(rendered)
+	rendered = strings.TrimRight(normalizeViewerText(rendered), "\n")
+	if rendered == "" {
+		return []string{"(empty)"}
+	}
+
+	lines := []string{}
+	for _, raw := range strings.Split(rendered, "\n") {
+		wrapped := wrapViewerText(raw, width)
+		if len(wrapped) == 0 {
+			lines = append(lines, "")
+			continue
+		}
+		lines = append(lines, wrapped...)
+	}
+	return lines
 }
 
 func renderMarkdownWithGlamour(md string, width int) (string, error) {
