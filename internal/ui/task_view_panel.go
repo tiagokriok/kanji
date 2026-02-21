@@ -4,10 +4,21 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/tiagokriok/kanji/internal/domain"
 )
+
+type taskViewerLayout struct {
+	panelWidth    int
+	panelHeight   int
+	contentWidth  int
+	contentHeight int
+	leftWidth     int
+	rightWidth    int
+}
 
 func (m Model) renderTaskViewerPanel(base string) string {
 	_ = base
@@ -17,6 +28,40 @@ func (m Model) renderTaskViewerPanel(base string) string {
 		return base
 	}
 
+	layout := m.taskViewerLayout()
+	leftLines := m.renderTaskViewerLeftLines(task, layout.leftWidth, layout.contentHeight, m.viewDescScroll)
+	rightLines := m.renderTaskViewerRightLines(layout.rightWidth, layout.contentHeight)
+	leftBlock := lipgloss.NewStyle().
+		Width(layout.leftWidth).
+		Height(layout.contentHeight).
+		MaxWidth(layout.leftWidth).
+		MaxHeight(layout.contentHeight).
+		Render(strings.Join(leftLines, "\n"))
+	rightBlock := lipgloss.NewStyle().
+		Width(layout.rightWidth).
+		Height(layout.contentHeight).
+		MaxWidth(layout.rightWidth).
+		MaxHeight(layout.contentHeight).
+		Render(strings.Join(rightLines, "\n"))
+	sepLine := strings.Repeat("│\n", max(0, layout.contentHeight-1)) + "│"
+	separator := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("250")).
+		Height(layout.contentHeight).
+		Render(sepLine)
+	body := lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, separator, rightBlock)
+
+	panel := lipgloss.NewStyle().
+		Width(layout.contentWidth).
+		Height(layout.contentHeight).
+		Padding(0, 1).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("250")).
+		Render(body)
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+}
+
+func (m Model) taskViewerLayout() taskViewerLayout {
 	panelWidth := m.width - 6
 	if panelWidth < 80 {
 		panelWidth = 80
@@ -49,37 +94,37 @@ func (m Model) renderTaskViewerPanel(base string) string {
 		rightWidth = max(16, contentWidth-leftWidth-1)
 	}
 
-	leftLines := m.renderTaskViewerLeftLines(task, leftWidth, contentHeight)
-	rightLines := m.renderTaskViewerRightLines(rightWidth, contentHeight)
-
-	if len(leftLines) < contentHeight {
-		leftLines = append(leftLines, makeViewerBlankLines(leftWidth, contentHeight-len(leftLines))...)
+	return taskViewerLayout{
+		panelWidth:    panelWidth,
+		panelHeight:   panelHeight,
+		contentWidth:  contentWidth,
+		contentHeight: contentHeight,
+		leftWidth:     leftWidth,
+		rightWidth:    rightWidth,
 	}
-	if len(rightLines) < contentHeight {
-		rightLines = append(rightLines, makeViewerBlankLines(rightWidth, contentHeight-len(rightLines))...)
-	}
-
-	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
-	rows := make([]string, 0, contentHeight)
-	for i := 0; i < contentHeight; i++ {
-		rows = append(rows, leftLines[i]+separatorStyle.Render("│")+rightLines[i])
-	}
-
-	panel := lipgloss.NewStyle().
-		Width(contentWidth).
-		Height(contentHeight).
-		Padding(0, 1).
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("250")).
-		Render(strings.Join(rows, "\n"))
-
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
 }
 
-func (m Model) renderTaskViewerLeftLines(task domain.Task, width, height int) []string {
+func (m Model) taskViewerDescViewportLines() int {
+	layout := m.taskViewerLayout()
+	return max(1, layout.contentHeight-3) // title + meta + hint
+}
+
+func (m Model) taskViewerMaxDescScroll() int {
+	task, ok := m.viewerTask()
+	if !ok {
+		return 0
+	}
+	layout := m.taskViewerLayout()
+	descLines := renderViewerMarkdownLines(task.DescriptionMD, layout.leftWidth)
+	viewport := max(1, layout.contentHeight-3)
+	return max(0, len(descLines)-viewport)
+}
+
+func (m Model) renderTaskViewerLeftLines(task domain.Task, width, height, scroll int) []string {
 	titleStyle := lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color("231")).Bold(true)
 	metaStyle := lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color("246"))
-	descStyle := lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color("252"))
+	descStyle := lipgloss.NewStyle().Width(width)
+	hintStyle := lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color("244"))
 
 	dueText := "-"
 	dueColor := dueColorDefault
@@ -99,19 +144,21 @@ func (m Model) renderTaskViewerLeftLines(task domain.Task, width, height int) []
 	lines := []string{
 		titleStyle.Render(truncate(task.Title, max(1, width))),
 		metaStyle.Render(fmt.Sprintf("%s | %s | %s", dueValue, priorityValue, statusValue)),
-		descStyle.Render(""),
+		hintStyle.Render("j/k or ↑/↓ scroll description | Enter/Esc close"),
 	}
 
-	description := strings.TrimSpace(task.DescriptionMD)
-	if description == "" {
-		description = "(empty)"
+	descLines := renderViewerMarkdownLines(task.DescriptionMD, width)
+	viewport := max(1, height-len(lines))
+	maxScroll := max(0, len(descLines)-viewport)
+	if scroll < 0 {
+		scroll = 0
 	}
-	description = normalizeViewerText(description)
-	for _, line := range wrapViewerText(description, width) {
-		lines = append(lines, descStyle.Render(line))
-		if len(lines) >= height {
-			return lines[:height]
-		}
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+	end := min(len(descLines), scroll+viewport)
+	for i := scroll; i < end; i++ {
+		lines = append(lines, descStyle.Width(width).Render(descLines[i]))
 	}
 	return lines
 }
@@ -224,6 +271,67 @@ func wrapViewerText(text string, width int) []string {
 		}
 	}
 	return wrapped
+}
+
+func renderViewerMarkdownLines(md string, width int) []string {
+	md = strings.TrimSpace(normalizeViewerText(md))
+	if md == "" {
+		return []string{"(empty)"}
+	}
+
+	rendered, err := renderMarkdownWithGlamour(md, width)
+	if err != nil {
+		return wrapViewerText(md, width)
+	}
+	rendered = strings.TrimRight(normalizeViewerText(rendered), "\n")
+	if rendered == "" {
+		return []string{"(empty)"}
+	}
+	return strings.Split(rendered, "\n")
+}
+
+func renderMarkdownWithGlamour(md string, width int) (string, error) {
+	if width < 20 {
+		width = 20
+	}
+	style := styles.DarkStyleConfig
+	style.H1.Prefix = " "
+	style.H2.Prefix = "  "
+	style.H3.Prefix = "   "
+	style.H4.Prefix = "    "
+	style.H5.Prefix = "     "
+	style.H6.Prefix = "      "
+	style.H1.BackgroundColor = nil
+	style.H1.Color = stringPtr("51")
+	style.H1.Bold = boolPtr(true)
+	style.H2.Bold = boolPtr(true)
+	style.H2.Color = stringPtr("45")
+	style.H2.Underline = boolPtr(false)
+	style.H3.Bold = boolPtr(true)
+	style.H3.Color = stringPtr("44")
+	style.H4.Bold = boolPtr(false)
+	style.H4.Color = stringPtr("43")
+	style.H5.Bold = boolPtr(false)
+	style.H5.Color = stringPtr("79")
+	style.H6.Bold = boolPtr(false)
+	style.H6.Color = stringPtr("116")
+
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithWordWrap(width),
+		glamour.WithStyles(style),
+	)
+	if err != nil {
+		return "", err
+	}
+	return renderer.Render(md)
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func stringPtr(v string) *string {
+	return &v
 }
 
 func normalizeViewerText(text string) string {

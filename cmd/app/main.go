@@ -136,6 +136,24 @@ func seedSampleData(
 							},
 						},
 						{
+							Title:         "Markdown showcase: full renderer coverage",
+							DescriptionMD: seedMarkdownShowcaseDescription(),
+							Column:        "Todo",
+							Priority:      2,
+							DueOffsetDays: intPtr(4),
+							Labels:        []string{"markdown", "demo"},
+							Comments: []seedComment{
+								{
+									Author: "maintainer",
+									Body:   seedMarkdownShowcaseCommentOne(),
+								},
+								{
+									Author: "qa",
+									Body:   seedMarkdownShowcaseCommentTwo(),
+								},
+							},
+						},
+						{
 							Title:         "Urgent: stabilize flaky integration tests",
 							DescriptionMD: "Failing suite blocks merges.\n\n```bash\ngo test ./... -run Integration\n```",
 							Column:        "Todo",
@@ -460,4 +478,117 @@ func intPtr(v int) *int {
 
 func strPtr(v string) *string {
 	return &v
+}
+
+func seedMarkdownShowcaseDescription() string {
+	return `# Markdown Showcase
+
+This seeded task validates the markdown renderer in the task viewer.
+
+## Headings
+
+### H3 Title
+#### H4 Title
+##### H5 Title
+###### H6 Title
+
+## Text Styling
+
+Regular text with **bold**, *italic*, ***bold italic***, ~~strikethrough~~, and inline code like ` + "`SELECT 1`" + `.
+
+## Lists
+
+- Unordered item one
+- Unordered item two
+  - Nested child A
+  - Nested child B
+
+1. Ordered item one
+2. Ordered item two
+3. Ordered item three
+
+- [ ] Task list unchecked
+- [x] Task list checked
+
+## Blockquote
+
+> "Small steps every day create large outcomes over time."
+>
+> Keep the workflow simple and consistent.
+
+## Horizontal Rule
+
+---
+
+## Code Blocks
+
+~~~go
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("kanji markdown demo")
+}
+~~~
+
+~~~sql
+SELECT id, title, priority
+FROM tasks
+WHERE priority <= 2
+ORDER BY updated_at DESC;
+~~~
+
+## Table
+
+| Field | Example | Notes |
+| --- | --- | --- |
+| Status | Doing | Uses board columns |
+| Priority | 0-5 | Lower is more urgent |
+| Due date | 2026-02-21 | Localized in UI |
+
+## Link + Image Syntax
+
+- Docs: [Charmbracelet](https://github.com/charmbracelet)
+- Image syntax sample: ![Kanji Logo](https://example.com/logo.png)
+
+## Mixed Content
+
+Use this section to verify wrapping behavior on narrow terminals. This sentence is intentionally long so line breaks, spacing, and clipping behavior can be validated across multiple terminal widths without manual editing.
+`
+}
+
+func seedMarkdownShowcaseCommentOne() string {
+	return `### Review Notes
+
+Great progress on the task viewer.
+
+- Verified heading rendering
+- Verified list wrapping
+- Checked long-line clipping behavior
+
+> Suggestion: keep the comments pane width fixed in split mode.
+
+Inline code check: ` + "`make seed`" + ` and ` + "`make run`" + `.`
+}
+
+func seedMarkdownShowcaseCommentTwo() string {
+	return `## QA Checklist
+
+1. Create a task with multiline description.
+2. Open viewer and scroll with j/k.
+3. Verify due date coloring logic.
+
+~~~bash
+make reset-db
+make seed
+make run
+~~~
+
+| Case | Expected |
+| --- | --- |
+| h2 | emphasized |
+| list | wrapped cleanly |
+| code | monospaced block |
+`
 }

@@ -543,6 +543,7 @@ type Model struct {
 	state            persistedUIState
 	editingDescTask  string
 	viewTaskID       string
+	viewDescScroll   int
 
 	statusLine string
 	err        error
@@ -1461,6 +1462,7 @@ func (m *Model) openTaskViewer() tea.Cmd {
 	}
 	m.showTaskView = true
 	m.viewTaskID = task.ID
+	m.viewDescScroll = 0
 	m.comments = nil
 	return m.loadCommentsCmd(task.ID)
 }
@@ -1468,6 +1470,7 @@ func (m *Model) openTaskViewer() tea.Cmd {
 func (m *Model) closeTaskViewer() {
 	m.showTaskView = false
 	m.viewTaskID = ""
+	m.viewDescScroll = 0
 }
 
 func (m Model) viewerTask() (domain.Task, bool) {
@@ -1502,6 +1505,43 @@ func (m Model) updateTaskViewer(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keys.Quit):
 			m.closeTaskViewer()
+			return m, nil
+		case key.Matches(msg, m.keys.Up):
+			if m.viewDescScroll > 0 {
+				m.viewDescScroll--
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.Down):
+			if maxScroll := m.taskViewerMaxDescScroll(); m.viewDescScroll < maxScroll {
+				m.viewDescScroll++
+			}
+			return m, nil
+		}
+
+		switch msg.String() {
+		case "pgup":
+			if m.viewDescScroll > 0 {
+				step := max(1, m.taskViewerDescViewportLines()/2)
+				m.viewDescScroll -= step
+				if m.viewDescScroll < 0 {
+					m.viewDescScroll = 0
+				}
+			}
+			return m, nil
+		case "pgdown":
+			if maxScroll := m.taskViewerMaxDescScroll(); m.viewDescScroll < maxScroll {
+				step := max(1, m.taskViewerDescViewportLines()/2)
+				m.viewDescScroll += step
+				if m.viewDescScroll > maxScroll {
+					m.viewDescScroll = maxScroll
+				}
+			}
+			return m, nil
+		case "home":
+			m.viewDescScroll = 0
+			return m, nil
+		case "end":
+			m.viewDescScroll = m.taskViewerMaxDescScroll()
 			return m, nil
 		}
 	}
