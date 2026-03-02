@@ -108,6 +108,13 @@ func (s *TaskService) MoveTask(ctx context.Context, taskID string, columnID, sta
 	})
 }
 
+func (s *TaskService) DeleteTask(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return errors.New("task id is required")
+	}
+	return s.repo.Delete(ctx, id)
+}
+
 func (s *TaskService) ListTasks(ctx context.Context, filters ListTaskFilters) ([]domain.Task, error) {
 	if strings.TrimSpace(filters.WorkspaceID) == "" {
 		return nil, errors.New("workspace id is required")

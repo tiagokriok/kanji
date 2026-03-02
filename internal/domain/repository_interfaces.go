@@ -8,6 +8,7 @@ type TaskRepository interface {
 	GetByID(ctx context.Context, taskID string) (Task, error)
 	List(ctx context.Context, filter TaskFilter) ([]Task, error)
 	Move(ctx context.Context, input MoveTaskInput) error
+	Delete(ctx context.Context, id string) error
 	ListColumns(ctx context.Context, boardID string) ([]Column, error)
 	ListBoards(ctx context.Context, workspaceID string) ([]Board, error)
 }

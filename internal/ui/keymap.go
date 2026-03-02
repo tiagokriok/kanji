@@ -24,6 +24,8 @@ type keyMap struct {
 	ShowKeybinds    key.Binding
 	ToggleView      key.Binding
 	MoveTask        key.Binding
+	MoveTaskLeft    key.Binding
+	DeleteTask      key.Binding
 	CycleStatus     key.Binding
 	ToggleDueSoon   key.Binding
 	CycleSort       key.Binding
@@ -53,7 +55,9 @@ func newKeyMap() keyMap {
 		NextBoard:       key.NewBinding(key.WithKeys("]"), key.WithHelp("]", "next board")),
 		ShowKeybinds:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keybinds")),
 		ToggleView:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch view")),
-		MoveTask:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move task")),
+		MoveTask:        key.NewBinding(key.WithKeys("m", "L"), key.WithHelp("m/L", "move right")),
+		MoveTaskLeft:    key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "move left")),
+		DeleteTask:      key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "delete")),
 		CycleStatus:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "cycle column filter")),
 		ToggleDueSoon:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "cycle due filter")),
 		CycleSort:       key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "cycle sort")),

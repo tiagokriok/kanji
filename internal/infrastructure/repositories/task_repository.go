@@ -157,6 +157,11 @@ func (r *TaskRepository) Move(ctx context.Context, input domain.MoveTaskInput) e
 	return nil
 }
 
+func (r *TaskRepository) Delete(ctx context.Context, id string) error {
+	_, err := r.db.Raw().ExecContext(ctx, "DELETE FROM tasks WHERE id = ?", id)
+	return err
+}
+
 func (r *TaskRepository) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {
 	items, err := r.queries.ListColumns(ctx, boardID)
 	if err != nil {

@@ -547,6 +547,8 @@ type Model struct {
 	returnTaskView   bool
 	returnTaskID     string
 
+	confirmingDelete bool
+
 	statusLine string
 	err        error
 
@@ -702,6 +704,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.loadTasksCmd()
 	case tea.KeyMsg:
+		if m.confirmingDelete {
+			if msg.String() == "y" {
+				if task, ok := m.currentTask(); ok {
+					m.confirmingDelete = false
+					m.statusLine = ""
+					return m, m.deleteTaskCmd(task.ID)
+				}
+			}
+			m.confirmingDelete = false
+			m.statusLine = ""
+			return m, nil
+		}
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
@@ -854,6 +868,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.MoveTask):
 			if task, ok := m.currentTask(); ok {
 				return m, m.moveToNextColumnCmd(task)
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.MoveTaskLeft):
+			if m.viewMode == viewKanban {
+				if task, ok := m.currentTask(); ok {
+					return m, m.moveToPrevColumnCmd(task)
+				}
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.DeleteTask):
+			if m.viewMode == viewKanban {
+				if _, ok := m.currentTask(); ok {
+					m.confirmingDelete = true
+					m.statusLine = "delete task? y/n"
+				}
 			}
 			return m, nil
 		}
@@ -1102,6 +1131,16 @@ func newTaskFormInput(placeholder, value string, limit int) textinput.Model {
 
 func (m *Model) startCreateTaskForm() {
 	statusOptions, statusIndex := m.buildTaskStatusOptions(nil)
+
+	if m.viewMode == viewKanban && m.activeColumn < len(m.columns) {
+		activeColID := m.columns[m.activeColumn].ID
+		for i, opt := range statusOptions {
+			if opt.ColumnID == activeColID {
+				statusIndex = i
+				break
+			}
+		}
+	}
 
 	form := &taskForm{
 		mode:            taskFormCreate,
@@ -3307,6 +3346,44 @@ func (m Model) moveToNextColumnCmd(task domain.Task) tea.Cmd {
 			return opResultMsg{err: err}
 		}
 		return opResultMsg{status: fmt.Sprintf("moved to %s", col.Name)}
+	}
+}
+
+func (m Model) moveToPrevColumnCmd(task domain.Task) tea.Cmd {
+	if len(m.columns) == 0 {
+		return nil
+	}
+	current := 0
+	if task.ColumnID != nil {
+		for i, col := range m.columns {
+			if col.ID == *task.ColumnID {
+				current = i
+				break
+			}
+		}
+	}
+	prev := (current - 1 + len(m.columns)) % len(m.columns)
+	col := m.columns[prev]
+	columnID := col.ID
+	status := strings.ToLower(col.Name)
+	service := m.taskService
+	return func() tea.Msg {
+		err := service.MoveTask(context.Background(), task.ID, &columnID, &status, float64(time.Now().UTC().UnixNano()))
+		if err != nil {
+			return opResultMsg{err: err}
+		}
+		return opResultMsg{status: fmt.Sprintf("moved to %s", col.Name)}
+	}
+}
+
+func (m Model) deleteTaskCmd(id string) tea.Cmd {
+	service := m.taskService
+	return func() tea.Msg {
+		err := service.DeleteTask(context.Background(), id)
+		if err != nil {
+			return opResultMsg{err: err}
+		}
+		return opResultMsg{status: "task deleted"}
 	}
 }
 
