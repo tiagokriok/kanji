@@ -366,27 +366,18 @@ func withBottomCounter(panel, counter string) string {
 }
 
 func (m Model) renderListFooter(width int) string {
-	contentWidth := boxContentWidth(width, 1, true)
-	shortcuts := "?: Keybinds | W: Workspaces | b: Board manager | [: Prev board | ]: Next board | F: Filter/Sort | S: Status | Z: Due | O: Sort | N: Create | /: Search | Enter: Open task | Q: Quit"
+	shortcuts := "?:help  n:new  /:search  enter:open  w:workspaces  b:boards  f:filters  q:quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
-		shortcuts += " | X: Clear search"
+		shortcuts += "  x:clear-search"
 	}
 	helpLine := lipgloss.NewStyle().
-		Width(contentWidth).
-		Padding(0, 1).
-		Foreground(lipgloss.Color("248")).
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("250")).
+		Foreground(lipgloss.Color("244")).
 		Render(shortcuts)
 
 	lines := []string{}
 	if strings.TrimSpace(m.statusLine) != "" {
 		statusLine := lipgloss.NewStyle().
-			Width(contentWidth).
-			Padding(0, 1).
 			Foreground(lipgloss.Color("222")).
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("250")).
 			Render(m.statusLine)
 		lines = append(lines, statusLine)
 	}
