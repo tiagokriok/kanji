@@ -3343,7 +3343,7 @@ func (m Model) renderFooter() string {
 		inputLine = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render(m.textArea.View())
 	}
 
-	shortcuts := "?:keybinds w:workspaces b:board-manager [ ]:boards f:filters s/z:quick-filter o:sort n:new /:search enter:open-task q:quit"
+	shortcuts := "?:help  n:new  /:search  enter:open  w:workspaces  b:boards  f:filters  q:quit"
 	if strings.TrimSpace(m.titleFilter) != "" {
 		shortcuts += " x:clear-search"
 	}
