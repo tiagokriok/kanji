@@ -3336,26 +3336,13 @@ func (m Model) moveToNextColumnCmd(task domain.Task) tea.Cmd {
 	if len(m.columns) == 0 {
 		return nil
 	}
-	current := 0
-	if task.ColumnID != nil {
-		for i, col := range m.columns {
-			if col.ID == *task.ColumnID {
-				current = i
-				break
-			}
-		}
-	}
-	next := (current + 1) % len(m.columns)
-	col := m.columns[next]
-	columnID := col.ID
-	status := strings.ToLower(col.Name)
 	flow := m.taskFlow
 	return func() tea.Msg {
-		err := flow.MoveTask(context.Background(), task.ID, &columnID, &status, float64(time.Now().UTC().UnixNano()))
+		result, err := flow.MoveTaskAdjacent(context.Background(), task.ID, m.columns, task.ColumnID, 1)
 		if err != nil {
 			return opResultMsg{err: err}
 		}
-		return opResultMsg{status: fmt.Sprintf("moved to %s", col.Name), taskID: task.ID, columnID: columnID}
+		return opResultMsg{status: result.Message, taskID: result.TaskID, columnID: result.ColumnID}
 	}
 }
 
@@ -3363,26 +3350,13 @@ func (m Model) moveToPrevColumnCmd(task domain.Task) tea.Cmd {
 	if len(m.columns) == 0 {
 		return nil
 	}
-	current := 0
-	if task.ColumnID != nil {
-		for i, col := range m.columns {
-			if col.ID == *task.ColumnID {
-				current = i
-				break
-			}
-		}
-	}
-	prev := (current - 1 + len(m.columns)) % len(m.columns)
-	col := m.columns[prev]
-	columnID := col.ID
-	status := strings.ToLower(col.Name)
 	flow := m.taskFlow
 	return func() tea.Msg {
-		err := flow.MoveTask(context.Background(), task.ID, &columnID, &status, float64(time.Now().UTC().UnixNano()))
+		result, err := flow.MoveTaskAdjacent(context.Background(), task.ID, m.columns, task.ColumnID, -1)
 		if err != nil {
 			return opResultMsg{err: err}
 		}
-		return opResultMsg{status: fmt.Sprintf("moved to %s", col.Name), taskID: task.ID, columnID: columnID}
+		return opResultMsg{status: result.Message, taskID: result.TaskID, columnID: result.ColumnID}
 	}
 }
 

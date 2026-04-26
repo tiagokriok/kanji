@@ -185,6 +185,179 @@ func TestTaskFlow_MoveTask_ReturnsRepoError(t *testing.T) {
 	}
 }
 
+func TestTaskFlow_MoveTaskAdjacent_EmptyColumns(t *testing.T) {
+	repo := &fakeTaskRepo{}
+	flow := NewTaskFlow(repo)
+
+	_, err := flow.MoveTaskAdjacent(context.Background(), "task-1", nil, strPtr("col-1"), 1)
+	if err == nil {
+		t.Fatal("expected error for empty columns, got nil")
+	}
+	if err.Error() != "no columns available" {
+		t.Fatalf("expected 'no columns available', got %q", err.Error())
+	}
+}
+
+func TestTaskFlow_MoveTaskAdjacent_MoveRight(t *testing.T) {
+	repo := &fakeTaskRepo{}
+	flow := NewTaskFlow(repo)
+
+	columns := []domain.Column{
+		{ID: "c1", Name: "Todo"},
+		{ID: "c2", Name: "Doing"},
+		{ID: "c3", Name: "Done"},
+	}
+
+	result, err := flow.MoveTaskAdjacent(context.Background(), "task-1", columns, strPtr("c1"), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.TaskID != "task-1" {
+		t.Errorf("TaskID = %q, want %q", result.TaskID, "task-1")
+	}
+	if result.ColumnID != "c2" {
+		t.Errorf("ColumnID = %q, want %q", result.ColumnID, "c2")
+	}
+	if result.Status != "doing" {
+		t.Errorf("Status = %q, want %q", result.Status, "doing")
+	}
+	if result.Message != "moved to Doing" {
+		t.Errorf("Message = %q, want %q", result.Message, "moved to Doing")
+	}
+
+	m := repo.lastMoveInput
+	if m.TaskID != "task-1" {
+		t.Errorf("Move TaskID = %q, want %q", m.TaskID, "task-1")
+	}
+	if m.ColumnID == nil || *m.ColumnID != "c2" {
+		t.Errorf("Move ColumnID = %v, want c2", m.ColumnID)
+	}
+	if m.Status == nil || *m.Status != "doing" {
+		t.Errorf("Move Status = %v, want doing", m.Status)
+	}
+}
+
+func TestTaskFlow_MoveTaskAdjacent_MoveLeft(t *testing.T) {
+	repo := &fakeTaskRepo{}
+	flow := NewTaskFlow(repo)
+
+	columns := []domain.Column{
+		{ID: "c1", Name: "Todo"},
+		{ID: "c2", Name: "Doing"},
+		{ID: "c3", Name: "Done"},
+	}
+
+	result, err := flow.MoveTaskAdjacent(context.Background(), "task-1", columns, strPtr("c2"), -1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ColumnID != "c1" {
+		t.Errorf("ColumnID = %q, want %q", result.ColumnID, "c1")
+	}
+	if result.Status != "todo" {
+		t.Errorf("Status = %q, want %q", result.Status, "todo")
+	}
+}
+
+func TestTaskFlow_MoveTaskAdjacent_WrapRight(t *testing.T) {
+	repo := &fakeTaskRepo{}
+	flow := NewTaskFlow(repo)
+
+	columns := []domain.Column{
+		{ID: "c1", Name: "Todo"},
+		{ID: "c2", Name: "Doing"},
+	}
+
+	result, err := flow.MoveTaskAdjacent(context.Background(), "task-1", columns, strPtr("c2"), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ColumnID != "c1" {
+		t.Errorf("ColumnID = %q, want %q", result.ColumnID, "c1")
+	}
+	if result.Status != "todo" {
+		t.Errorf("Status = %q, want %q", result.Status, "todo")
+	}
+}
+
+func TestTaskFlow_MoveTaskAdjacent_WrapLeft(t *testing.T) {
+	repo := &fakeTaskRepo{}
+	flow := NewTaskFlow(repo)
+
+	columns := []domain.Column{
+		{ID: "c1", Name: "Todo"},
+		{ID: "c2", Name: "Doing"},
+	}
+
+	result, err := flow.MoveTaskAdjacent(context.Background(), "task-1", columns, strPtr("c1"), -1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ColumnID != "c2" {
+		t.Errorf("ColumnID = %q, want %q", result.ColumnID, "c2")
+	}
+	if result.Status != "doing" {
+		t.Errorf("Status = %q, want %q", result.Status, "doing")
+	}
+}
+
+func TestTaskFlow_MoveTaskAdjacent_NilCurrentColumnID(t *testing.T) {
+	repo := &fakeTaskRepo{}
+	flow := NewTaskFlow(repo)
+
+	columns := []domain.Column{
+		{ID: "c1", Name: "Todo"},
+		{ID: "c2", Name: "Doing"},
+	}
+
+	result, err := flow.MoveTaskAdjacent(context.Background(), "task-1", columns, nil, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ColumnID != "c2" {
+		t.Errorf("ColumnID = %q, want %q", result.ColumnID, "c2")
+	}
+	if result.Status != "doing" {
+		t.Errorf("Status = %q, want %q", result.Status, "doing")
+	}
+}
+
+func TestTaskFlow_MoveTaskAdjacent_UnknownCurrentColumnID(t *testing.T) {
+	repo := &fakeTaskRepo{}
+	flow := NewTaskFlow(repo)
+
+	columns := []domain.Column{
+		{ID: "c1", Name: "Todo"},
+		{ID: "c2", Name: "Doing"},
+	}
+
+	result, err := flow.MoveTaskAdjacent(context.Background(), "task-1", columns, strPtr("unknown"), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ColumnID != "c2" {
+		t.Errorf("ColumnID = %q, want %q", result.ColumnID, "c2")
+	}
+	if result.Status != "doing" {
+		t.Errorf("Status = %q, want %q", result.Status, "doing")
+	}
+}
+
+func TestTaskFlow_MoveTaskAdjacent_PropagatesRepoError(t *testing.T) {
+	repo := &fakeTaskRepo{moveErr: errors.New("db conflict")}
+	flow := NewTaskFlow(repo)
+
+	columns := []domain.Column{
+		{ID: "c1", Name: "Todo"},
+		{ID: "c2", Name: "Doing"},
+	}
+
+	_, err := flow.MoveTaskAdjacent(context.Background(), "task-1", columns, strPtr("c1"), 1)
+	if err == nil || err.Error() != "db conflict" {
+		t.Fatalf("expected 'db conflict' error, got %v", err)
+	}
+}
+
 func strPtr(s string) *string {
 	return &s
 }
