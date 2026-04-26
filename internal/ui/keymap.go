@@ -3,65 +3,69 @@ package ui
 import "github.com/charmbracelet/bubbles/key"
 
 type keyMap struct {
-	Quit            key.Binding
-	Up              key.Binding
-	Down            key.Binding
-	Left            key.Binding
-	Right           key.Binding
-	OpenDetails     key.Binding
-	ToggleDetails   key.Binding
-	NewTask         key.Binding
-	EditTitle       key.Binding
-	EditDescription key.Binding
-	AddComment      key.Binding
-	Search          key.Binding
-	ClearSearch     key.Binding
-	ShowFilters     key.Binding
-	OpenWorkspace   key.Binding
-	OpenBoardPanel  key.Binding
-	PrevBoard       key.Binding
-	NextBoard       key.Binding
-	ShowKeybinds    key.Binding
-	ToggleView      key.Binding
-	MoveTask        key.Binding
-	MoveTaskLeft    key.Binding
-	DeleteTask      key.Binding
-	CycleStatus     key.Binding
-	ToggleDueSoon   key.Binding
-	CycleSort       key.Binding
-	Confirm         key.Binding
-	Cancel          key.Binding
+	Quit                key.Binding
+	Up                  key.Binding
+	Down                key.Binding
+	Left                key.Binding
+	Right               key.Binding
+	OpenDetails         key.Binding
+	ToggleDetails       key.Binding
+	NewTask             key.Binding
+	EditTitle           key.Binding
+	EditDescription     key.Binding
+	AddComment          key.Binding
+	Search              key.Binding
+	ClearSearch         key.Binding
+	ShowFilters         key.Binding
+	OpenWorkspace       key.Binding
+	OpenBoardPanel      key.Binding
+	PrevBoard           key.Binding
+	NextBoard           key.Binding
+	ShowKeybinds        key.Binding
+	ToggleView          key.Binding
+	MoveTask            key.Binding
+	MoveTaskLeft        key.Binding
+	KanbanMoveTaskLeft  key.Binding
+	KanbanMoveTaskRight key.Binding
+	DeleteTask          key.Binding
+	CycleStatus         key.Binding
+	ToggleDueSoon       key.Binding
+	CycleSort           key.Binding
+	Confirm             key.Binding
+	Cancel              key.Binding
 }
 
 func newKeyMap() keyMap {
 	return keyMap{
-		Quit:            key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
-		Up:              key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		Down:            key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		Left:            key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "left")),
-		Right:           key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "right")),
-		OpenDetails:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open task")),
-		ToggleDetails:   key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "toggle details")),
-		NewTask:         key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new task")),
-		EditTitle:       key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit title")),
-		EditDescription: key.NewBinding(key.WithKeys("E"), key.WithHelp("E", "edit description")),
-		AddComment:      key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "add comment")),
-		Search:          key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-		ClearSearch:     key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "clear search")),
-		ShowFilters:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "filters")),
-		OpenWorkspace:   key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "workspaces")),
-		OpenBoardPanel:  key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "board manager")),
-		PrevBoard:       key.NewBinding(key.WithKeys("["), key.WithHelp("[", "prev board")),
-		NextBoard:       key.NewBinding(key.WithKeys("]"), key.WithHelp("]", "next board")),
-		ShowKeybinds:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keybinds")),
-		ToggleView:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch view")),
-		MoveTask:        key.NewBinding(key.WithKeys("m", "L"), key.WithHelp("m/L", "move right")),
-		MoveTaskLeft:    key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "move left")),
-		DeleteTask:      key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "delete")),
-		CycleStatus:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "cycle column filter")),
-		ToggleDueSoon:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "cycle due filter")),
-		CycleSort:       key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "cycle sort")),
-		Confirm:         key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
-		Cancel:          key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		Quit:                key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Up:                  key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+		Down:                key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		Left:                key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "left")),
+		Right:               key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "right")),
+		OpenDetails:         key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open task")),
+		ToggleDetails:       key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "toggle details")),
+		NewTask:             key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new task")),
+		EditTitle:           key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit title")),
+		EditDescription:     key.NewBinding(key.WithKeys("E"), key.WithHelp("E", "edit description")),
+		AddComment:          key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "add comment")),
+		Search:              key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+		ClearSearch:         key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "clear search")),
+		ShowFilters:         key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "filters")),
+		OpenWorkspace:       key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "workspaces")),
+		OpenBoardPanel:      key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "board manager")),
+		PrevBoard:           key.NewBinding(key.WithKeys("["), key.WithHelp("[", "prev board")),
+		NextBoard:           key.NewBinding(key.WithKeys("]"), key.WithHelp("]", "next board")),
+		ShowKeybinds:        key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keybinds")),
+		ToggleView:          key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch view")),
+		MoveTask:            key.NewBinding(key.WithKeys("m", "L"), key.WithHelp("m/L", "move right")),
+		MoveTaskLeft:        key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "move left")),
+		KanbanMoveTaskLeft:  key.NewBinding(key.WithKeys("shift+left"), key.WithHelp("shift+←", "move card left")),
+		KanbanMoveTaskRight: key.NewBinding(key.WithKeys("shift+right"), key.WithHelp("shift+→", "move card right")),
+		DeleteTask:          key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "delete")),
+		CycleStatus:         key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "cycle column filter")),
+		ToggleDueSoon:       key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "cycle due filter")),
+		CycleSort:           key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "cycle sort")),
+		Confirm:             key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
+		Cancel:              key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
 	}
 }

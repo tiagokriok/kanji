@@ -470,8 +470,10 @@ type commentsLoadedMsg struct {
 }
 
 type opResultMsg struct {
-	status string
-	err    error
+	status   string
+	err      error
+	taskID   string
+	columnID string
 }
 
 type executeActionMsg struct {
@@ -533,19 +535,21 @@ type Model struct {
 	textInput textinput.Model
 	textArea  textarea.Model
 
-	keyFilter        textinput.Model
-	keySelected      int
-	filterFocus      int
-	contextFilter    textinput.Model
-	contextSelected  int
-	contextEditMode  contextEditMode
-	contextEditInput textinput.Model
-	state            persistedUIState
-	editingDescTask  string
-	viewTaskID       string
-	viewDescScroll   int
-	returnTaskView   bool
-	returnTaskID     string
+	keyFilter             textinput.Model
+	keySelected           int
+	filterFocus           int
+	contextFilter         textinput.Model
+	contextSelected       int
+	contextEditMode       contextEditMode
+	contextEditInput      textinput.Model
+	state                 persistedUIState
+	editingDescTask       string
+	viewTaskID            string
+	viewDescScroll        int
+	returnTaskView        bool
+	returnTaskID          string
+	pendingKanbanTaskID   string
+	pendingKanbanColumnID string
 
 	confirmingDelete bool
 
@@ -660,7 +664,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.tasks = m.applyActiveFilters(msg.tasks)
 		m.sortTasks(m.tasks)
-		m.ensureSelection()
+		if !m.restorePendingKanbanSelection() {
+			m.ensureSelection()
+		}
 		if m.showDetails {
 			if task, ok := m.currentTask(); ok {
 				return m, m.loadCommentsCmd(task.ID)
@@ -696,6 +702,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.statusLine = ""
+		if m.viewMode == viewKanban && strings.TrimSpace(msg.taskID) != "" && strings.TrimSpace(msg.columnID) != "" {
+			m.pendingKanbanTaskID = msg.taskID
+			m.pendingKanbanColumnID = msg.columnID
+			m.setActiveColumnByID(msg.columnID)
+		}
 		if m.returnTaskView && strings.TrimSpace(m.returnTaskID) != "" {
 			taskID := m.returnTaskID
 			m.clearTaskViewerReturn()
@@ -837,6 +848,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		case key.Matches(msg, m.keys.KanbanMoveTaskLeft):
+			if m.viewMode == viewKanban {
+				if task, ok := m.currentTask(); ok {
+					return m, m.moveToPrevColumnCmd(task)
+				}
+			}
+			return m, nil
 		case key.Matches(msg, m.keys.Left):
 			if m.viewMode == viewKanban {
 				if m.activeColumn > 0 {
@@ -847,6 +865,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if task, ok := m.currentTask(); ok {
 						return m, m.loadCommentsCmd(task.ID)
 					}
+				}
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.KanbanMoveTaskRight):
+			if m.viewMode == viewKanban {
+				if task, ok := m.currentTask(); ok {
+					return m, m.moveToNextColumnCmd(task)
 				}
 			}
 			return m, nil
@@ -2930,8 +2955,10 @@ func (m Model) keybindEntries() []keybindEntry {
 		{ID: "cycle_sort", Key: "o", Label: "Cycle sort mode"},
 		{ID: "move_up", Key: "↑", Label: "Move selection up"},
 		{ID: "move_down", Key: "↓", Label: "Move selection down"},
-		{ID: "move_left", Key: "←", Label: "Move left (kanban)"},
-		{ID: "move_right", Key: "→", Label: "Move right (kanban)"},
+		{ID: "move_left", Key: "←", Label: "Move selection left (kanban)"},
+		{ID: "move_right", Key: "→", Label: "Move selection right (kanban)"},
+		{ID: "move_task_left", Key: "Shift+←", Label: "Move card to left column (kanban)"},
+		{ID: "move_task_right", Key: "Shift+→", Label: "Move card to right column (kanban)"},
 		{ID: "quit", Key: "q", Label: "Quit"},
 	}
 	if strings.TrimSpace(m.titleFilter) != "" {
@@ -3222,6 +3249,20 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case "move_task_left":
+		if m.viewMode == viewKanban {
+			if task, ok := m.currentTask(); ok {
+				return m, m.moveToPrevColumnCmd(task)
+			}
+		}
+		return m, nil
+	case "move_task_right":
+		if m.viewMode == viewKanban {
+			if task, ok := m.currentTask(); ok {
+				return m, m.moveToNextColumnCmd(task)
+			}
+		}
+		return m, nil
 	case "open_move":
 		return m, m.openTaskViewer()
 	case "move_task":
@@ -3349,7 +3390,7 @@ func (m Model) moveToNextColumnCmd(task domain.Task) tea.Cmd {
 		if err != nil {
 			return opResultMsg{err: err}
 		}
-		return opResultMsg{status: fmt.Sprintf("moved to %s", col.Name)}
+		return opResultMsg{status: fmt.Sprintf("moved to %s", col.Name), taskID: task.ID, columnID: columnID}
 	}
 }
 
@@ -3376,7 +3417,7 @@ func (m Model) moveToPrevColumnCmd(task domain.Task) tea.Cmd {
 		if err != nil {
 			return opResultMsg{err: err}
 		}
-		return opResultMsg{status: fmt.Sprintf("moved to %s", col.Name)}
+		return opResultMsg{status: fmt.Sprintf("moved to %s", col.Name), taskID: task.ID, columnID: columnID}
 	}
 }
 
@@ -3465,6 +3506,44 @@ func (m *Model) ensureSelection() {
 	if m.selected >= len(m.tasks) {
 		m.selected = len(m.tasks) - 1
 	}
+}
+
+func (m *Model) setActiveColumnByID(columnID string) {
+	if strings.TrimSpace(columnID) == "" {
+		return
+	}
+	for i, col := range m.columns {
+		if col.ID == columnID {
+			m.activeColumn = i
+			return
+		}
+	}
+}
+
+func (m *Model) restorePendingKanbanSelection() bool {
+	if m.viewMode != viewKanban {
+		m.pendingKanbanTaskID = ""
+		m.pendingKanbanColumnID = ""
+		return false
+	}
+	if strings.TrimSpace(m.pendingKanbanTaskID) == "" || strings.TrimSpace(m.pendingKanbanColumnID) == "" {
+		return false
+	}
+
+	defer func() {
+		m.pendingKanbanTaskID = ""
+		m.pendingKanbanColumnID = ""
+	}()
+
+	m.setActiveColumnByID(m.pendingKanbanColumnID)
+	tasks := m.tasksForColumn(m.pendingKanbanColumnID)
+	for i, task := range tasks {
+		if task.ID == m.pendingKanbanTaskID {
+			m.kanbanRow = i
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) ensureKanbanRow() {
