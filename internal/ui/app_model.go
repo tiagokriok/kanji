@@ -768,12 +768,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case key.Matches(msg, m.keys.Search):
-			m.inputMode = inputSearch
-			m.textInput.SetValue(m.titleFilter)
-			m.textInput.Placeholder = "Search title"
-			m.textInput.Focus()
-			m.statusLine = "Search by title"
-			return m, textinput.Blink
+			return m, m.startSearch()
 		case key.Matches(msg, m.keys.ClearSearch):
 			if strings.TrimSpace(m.titleFilter) == "" {
 				return m, nil
@@ -795,12 +790,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if _, ok := m.currentTask(); !ok {
 				return m, nil
 			}
-			m.inputMode = inputAddComment
-			m.textInput.SetValue("")
-			m.textInput.Placeholder = "Comment body"
-			m.textInput.Focus()
-			m.statusLine = "Add comment"
-			return m, textinput.Blink
+			return m, m.startAddComment()
 		case key.Matches(msg, m.keys.EditDescription):
 			task, ok := m.currentTask()
 			if !ok {
@@ -961,105 +951,29 @@ func (m Model) View() string {
 }
 
 func (m Model) updateInputMode(msg tea.Msg) (tea.Model, tea.Cmd) {
-	mode := m.inputMode
-
 	switch msg := msg.(type) {
 	case descriptionEditedMsg:
-		if mode == inputTaskForm && m.taskForm != nil {
-			if msg.err != nil {
-				m.statusLine = fmt.Sprintf("editor error: %v", msg.err)
-				return m, nil
-			}
-			m.taskForm.descriptionFull = msg.content
-			m.taskForm.description.SetValue(summarizeDescription(msg.content))
-			m.statusLine = ""
-			return m, nil
+		if model, cmd, handled := m.handleDescriptionEditedMsg(msg); handled {
+			return model, cmd
 		}
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Cancel):
-			if mode == inputTaskForm {
-				m.closeTaskForm()
-				if m.returnTaskView && strings.TrimSpace(m.returnTaskID) != "" {
-					taskID := m.returnTaskID
-					m.clearTaskViewerReturn()
-					return m, m.openTaskViewerByID(taskID)
-				}
-				return m, nil
-			}
-			m.inputMode = inputNone
-			m.textInput.Blur()
-			m.textArea.Blur()
-			m.statusLine = ""
-			if mode == inputAddComment && m.returnTaskView && strings.TrimSpace(m.returnTaskID) != "" {
-				taskID := m.returnTaskID
-				m.clearTaskViewerReturn()
-				return m, m.openTaskViewerByID(taskID)
-			}
-			return m, nil
-		case mode == inputTaskForm:
+			return m.cancelInputMode()
+		case m.inputMode == inputTaskForm:
 			if handledModel, cmd, handled := m.handleTaskFormKey(msg); handled {
 				return handledModel, cmd
 			}
-		case msg.String() == "ctrl+s" && mode == inputEditDescription:
-			task, ok := m.currentTask()
-			if !ok {
-				m.inputMode = inputNone
-				return m, nil
-			}
-			description := m.textArea.Value()
-			m.inputMode = inputNone
-			m.textArea.Blur()
-			return m, m.updateTaskDescriptionCmd(task.ID, description)
-		case key.Matches(msg, m.keys.Confirm) && mode != inputEditDescription:
-			value := strings.TrimSpace(m.textInput.Value())
-			m.inputMode = inputNone
-			m.textInput.Blur()
-			switch mode {
-			case inputSearch:
-				m.titleFilter = value
-				m.statusLine = ""
-				return m, m.loadTasksCmd()
-			case inputAddComment:
-				task, ok := m.currentTask()
-				if !ok {
-					return m, nil
-				}
-				if value == "" {
-					m.inputMode = inputAddComment
-					m.textInput.Focus()
-					m.statusLine = "comment is required"
-					return m, textinput.Blink
-				}
-				return m, m.addCommentCmd(task.ID, value)
+		case msg.String() == "ctrl+s" && m.inputMode == inputEditDescription:
+			return m.saveEditDescription()
+		case key.Matches(msg, m.keys.Confirm) && m.inputMode != inputEditDescription:
+			if model, cmd, handled := m.confirmInputMode(); handled {
+				return model, cmd
 			}
 		}
 	}
 
-	if mode == inputEditDescription {
-		var cmd tea.Cmd
-		m.textArea, cmd = m.textArea.Update(msg)
-		m.inputMode = mode
-		return m, cmd
-	}
-
-	if mode == inputTaskForm && m.taskForm != nil {
-		if field := m.taskForm.currentInputField(); field != nil {
-			prevDescription := m.taskForm.description.Value()
-			var cmd tea.Cmd
-			*field, cmd = field.Update(msg)
-			if m.taskForm.focus == taskFieldDescription && m.taskForm.description.Value() != prevDescription {
-				m.taskForm.descriptionFull = m.taskForm.description.Value()
-			}
-			return m, cmd
-		}
-		return m, nil
-	}
-
-	var cmd tea.Cmd
-	m.textInput, cmd = m.textInput.Update(msg)
-	m.inputMode = mode
-	return m, cmd
+	return m.updateInputModeWidgets(msg)
 }
 
 func (m *Model) handleTaskFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
@@ -1624,12 +1538,7 @@ func (m Model) updateTaskViewer(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.setTaskViewerReturn(task.ID)
 			m.closeTaskViewer()
-			m.inputMode = inputAddComment
-			m.textInput.SetValue("")
-			m.textInput.Placeholder = "Comment body"
-			m.textInput.Focus()
-			m.statusLine = "Add comment"
-			return m, textinput.Blink
+			return m, m.startAddComment()
 		case key.Matches(msg, m.keys.Up):
 			if m.viewDescScroll > 0 {
 				m.viewDescScroll--
@@ -3095,12 +3004,7 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "search":
-		m.inputMode = inputSearch
-		m.textInput.SetValue(m.titleFilter)
-		m.textInput.Placeholder = "Search title"
-		m.textInput.Focus()
-		m.statusLine = "Search by title"
-		return m, textinput.Blink
+		return m, m.startSearch()
 	case "open_filters":
 		m.openFilterPanel()
 		return m, nil
@@ -3151,12 +3055,7 @@ func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
 		if _, ok := m.currentTask(); !ok {
 			return m, nil
 		}
-		m.inputMode = inputAddComment
-		m.textInput.SetValue("")
-		m.textInput.Placeholder = "Comment body"
-		m.textInput.Focus()
-		m.statusLine = "Add comment"
-		return m, textinput.Blink
+		return m, m.startAddComment()
 	case "edit_description":
 		task, ok := m.currentTask()
 		if !ok {

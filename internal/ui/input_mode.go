@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -50,10 +51,12 @@ func (m *Model) confirmAddComment() tea.Cmd {
 	value := strings.TrimSpace(m.textInput.Value())
 	task, ok := m.currentTask()
 	previousStatus := m.statusLine
-	m.cancelInput()
 	if !ok {
+		m.inputMode = inputNone
+		m.textInput.Blur()
 		return nil
 	}
+	m.cancelInput()
 	if value == "" {
 		m.inputMode = inputAddComment
 		m.textInput.Focus()
@@ -95,4 +98,91 @@ func (m *Model) submitEditDescription() tea.Cmd {
 	m.cancelInput()
 	m.statusLine = previousStatus
 	return m.updateTaskDescriptionCmd(task.ID, description)
+}
+
+// handleDescriptionEditedMsg processes a descriptionEditedMsg while in input mode.
+// It returns handled=true when the message was consumed (task form mode).
+func (m Model) handleDescriptionEditedMsg(msg descriptionEditedMsg) (tea.Model, tea.Cmd, bool) {
+	if m.inputMode != inputTaskForm || m.taskForm == nil {
+		return m, nil, false
+	}
+	if msg.err != nil {
+		m.statusLine = fmt.Sprintf("editor error: %v", msg.err)
+		return m, nil, true
+	}
+	m.taskForm.descriptionFull = msg.content
+	m.taskForm.description.SetValue(summarizeDescription(msg.content))
+	m.statusLine = ""
+	return m, nil, true
+}
+
+// cancelInputMode handles the cancel key for any active input mode.
+func (m Model) cancelInputMode() (tea.Model, tea.Cmd) {
+	switch m.inputMode {
+	case inputTaskForm:
+		m.closeTaskForm()
+		if m.returnTaskView && strings.TrimSpace(m.returnTaskID) != "" {
+			taskID := m.returnTaskID
+			m.clearTaskViewerReturn()
+			return m, m.openTaskViewerByID(taskID)
+		}
+		return m, nil
+	case inputAddComment:
+		return m, m.cancelAddComment()
+	default:
+		m.cancelInput()
+		return m, nil
+	}
+}
+
+// saveEditDescription saves the current textarea content as the task description.
+func (m Model) saveEditDescription() (tea.Model, tea.Cmd) {
+	task, ok := m.currentTask()
+	if !ok {
+		m.inputMode = inputNone
+		return m, nil
+	}
+	description := m.textArea.Value()
+	m.inputMode = inputNone
+	m.textArea.Blur()
+	return m, m.updateTaskDescriptionCmd(task.ID, description)
+}
+
+// confirmInputMode handles the confirm key for any active non-edit-description input mode.
+// It returns handled=true when the confirm action was consumed.
+func (m Model) confirmInputMode() (tea.Model, tea.Cmd, bool) {
+	switch m.inputMode {
+	case inputSearch:
+		return m, m.confirmSearch(), true
+	case inputAddComment:
+		return m, m.confirmAddComment(), true
+	}
+	return m, nil, false
+}
+
+// updateInputModeWidgets routes non-consumed messages to the active input widget.
+func (m Model) updateInputModeWidgets(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch m.inputMode {
+	case inputEditDescription:
+		var cmd tea.Cmd
+		m.textArea, cmd = m.textArea.Update(msg)
+		return m, cmd
+	case inputTaskForm:
+		if m.taskForm != nil {
+			if field := m.taskForm.currentInputField(); field != nil {
+				prevDescription := m.taskForm.description.Value()
+				var cmd tea.Cmd
+				*field, cmd = field.Update(msg)
+				if m.taskForm.focus == taskFieldDescription && m.taskForm.description.Value() != prevDescription {
+					m.taskForm.descriptionFull = m.taskForm.description.Value()
+				}
+				return m, cmd
+			}
+		}
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.textInput, cmd = m.textInput.Update(msg)
+		return m, cmd
+	}
 }

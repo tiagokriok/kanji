@@ -8,44 +8,35 @@ import (
 	"github.com/tiagokriok/kanji/internal/domain"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
+	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
 
 type CommentRepository struct {
-	db      db.Adapter
+	store   store.Store
 	queries *sqlc.Queries
 }
 
 func NewCommentRepository(adapter db.Adapter) *CommentRepository {
 	return &CommentRepository{
-		db:      adapter,
+		store:   store.New(adapter),
 		queries: adapter.Queries(),
 	}
 }
 
 func (r *CommentRepository) Create(ctx context.Context, comment domain.Comment) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for create comment: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	qtx := r.queries.WithTx(tx)
-	err = qtx.CreateComment(ctx, sqlc.CreateCommentParams{
-		ID:         comment.ID,
-		TaskID:     comment.TaskID,
-		ProviderID: comment.ProviderID,
-		RemoteID:   nullString(comment.RemoteID),
-		BodyMd:     comment.BodyMD,
-		Author:     nullString(comment.Author),
-		CreatedAt:  comment.CreatedAt.UTC().Format(time.RFC3339),
-	})
-	if err != nil {
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		return qtx.CreateComment(ctx, sqlc.CreateCommentParams{
+			ID:         comment.ID,
+			TaskID:     comment.TaskID,
+			ProviderID: comment.ProviderID,
+			RemoteID:   nullString(comment.RemoteID),
+			BodyMd:     comment.BodyMD,
+			Author:     nullString(comment.Author),
+			CreatedAt:  comment.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}); err != nil {
 		return fmt.Errorf("create comment: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit create comment: %w", err)
 	}
 	return nil
 }
