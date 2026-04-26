@@ -492,7 +492,10 @@ type keybindEntry struct {
 }
 
 type Model struct {
+	overlayState
+
 	taskService    *application.TaskService
+	taskFlow       *application.TaskFlow
 	commentService *application.CommentService
 	contextService *application.ContextService
 
@@ -520,34 +523,17 @@ type Model struct {
 	dueFilter      dueFilterMode
 	sortMode       taskSortMode
 
-	viewMode     viewMode
-	showDetails  bool
-	showTaskView bool
-	inputMode    inputMode
-	taskForm     *taskForm
-	showKeybinds bool
-	showFilters  bool
-	showContexts bool
-	contextMode  contextMode
-	boardForm    *boardCreateForm
-	boardOrder   *boardColumnsOrderForm
+	viewMode    viewMode
+	showDetails bool
 
 	textInput textinput.Model
 	textArea  textarea.Model
 
 	keyFilter             textinput.Model
-	keySelected           int
-	filterFocus           int
 	contextFilter         textinput.Model
-	contextSelected       int
-	contextEditMode       contextEditMode
 	contextEditInput      textinput.Model
 	state                 persistedUIState
 	editingDescTask       string
-	viewTaskID            string
-	viewDescScroll        int
-	returnTaskView        bool
-	returnTaskID          string
 	pendingKanbanTaskID   string
 	pendingKanbanColumnID string
 
@@ -562,7 +548,7 @@ type Model struct {
 	keys keyMap
 }
 
-func NewModel(taskService *application.TaskService, commentService *application.CommentService, contextService *application.ContextService, setup application.BootstrapResult) Model {
+func NewModel(taskService *application.TaskService, taskFlow *application.TaskFlow, commentService *application.CommentService, contextService *application.ContextService, setup application.BootstrapResult) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Type..."
 	ti.CharLimit = 512
@@ -598,6 +584,7 @@ func NewModel(taskService *application.TaskService, commentService *application.
 
 	model := Model{
 		taskService:      taskService,
+		taskFlow:         taskFlow,
 		commentService:   commentService,
 		contextService:   contextService,
 		dateFormat:       detectUserDateFormat(),
@@ -631,19 +618,16 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.showTaskView {
+	switch m.activeOverlay() {
+	case overlayTaskView:
 		return m.updateTaskViewer(msg)
-	}
-	if m.showKeybinds {
+	case overlayKeybinds:
 		return m.updateKeybindPanel(msg)
-	}
-	if m.showFilters {
+	case overlayFilters:
 		return m.updateFilterPanel(msg)
-	}
-	if m.showContexts {
+	case overlayContexts:
 		return m.updateContextPanel(msg)
-	}
-	if m.inputMode != inputNone {
+	case overlayInput:
 		return m.updateInputMode(msg)
 	}
 
@@ -1144,8 +1128,7 @@ func (m *Model) submitTaskForm() (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) closeTaskForm() {
-	m.inputMode = inputNone
-	m.taskForm = nil
+	m.overlayState.closeTaskForm()
 	m.statusLine = ""
 }
 
@@ -1185,8 +1168,7 @@ func (m *Model) startCreateTaskForm() {
 	form.clampStatusIndex()
 	form.setFocus(taskFieldTitle)
 
-	m.taskForm = form
-	m.inputMode = inputTaskForm
+	m.overlayState.startTaskForm(form)
 	m.statusLine = "Create task"
 }
 
@@ -1217,8 +1199,7 @@ func (m *Model) startEditTaskForm(task domain.Task) {
 	form.clampStatusIndex()
 	form.setFocus(taskFieldTitle)
 
-	m.taskForm = form
-	m.inputMode = inputTaskForm
+	m.overlayState.startTaskForm(form)
 	m.statusLine = "Edit task"
 }
 
@@ -1567,27 +1548,21 @@ func (m *Model) openTaskViewerByID(taskID string) tea.Cmd {
 	if strings.TrimSpace(taskID) == "" {
 		return nil
 	}
-	m.showTaskView = true
-	m.viewTaskID = taskID
-	m.viewDescScroll = 0
+	m.overlayState.openTaskView(taskID)
 	m.comments = nil
 	return m.loadCommentsCmd(taskID)
 }
 
 func (m *Model) closeTaskViewer() {
-	m.showTaskView = false
-	m.viewTaskID = ""
-	m.viewDescScroll = 0
+	m.overlayState.closeTaskView()
 }
 
 func (m *Model) setTaskViewerReturn(taskID string) {
-	m.returnTaskView = true
-	m.returnTaskID = strings.TrimSpace(taskID)
+	m.overlayState.setTaskViewerReturn(strings.TrimSpace(taskID))
 }
 
 func (m *Model) clearTaskViewerReturn() {
-	m.returnTaskView = false
-	m.returnTaskID = ""
+	m.overlayState.clearTaskViewerReturn()
 }
 
 func (m Model) viewerTask() (domain.Task, bool) {
@@ -1698,25 +1673,23 @@ func (m Model) updateTaskViewer(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) openKeybindPanel() {
-	m.showKeybinds = true
-	m.keySelected = 0
+	m.overlayState.openKeybinds()
 	m.keyFilter.SetValue("")
 	m.keyFilter.Width = max(24, m.width/3)
 	m.keyFilter.Focus()
 }
 
 func (m *Model) closeKeybindPanel() {
-	m.showKeybinds = false
+	m.overlayState.closeKeybinds()
 	m.keyFilter.Blur()
 }
 
 func (m *Model) openFilterPanel() {
-	m.showFilters = true
-	m.filterFocus = 0
+	m.overlayState.openFilters()
 }
 
 func (m *Model) closeFilterPanel() {
-	m.showFilters = false
+	m.overlayState.closeFilters()
 }
 
 func (m *Model) bootstrapContexts() {
@@ -1895,22 +1868,14 @@ func (m *Model) switchBoard(boardID string) error {
 }
 
 func (m *Model) openContextPanel(mode contextMode) {
-	m.showContexts = true
-	m.contextMode = mode
-	m.contextSelected = 0
-	m.contextEditMode = contextEditNone
-	m.boardForm = nil
-	m.boardOrder = nil
+	m.overlayState.openContexts(mode)
 	m.contextEditInput.SetValue("")
 	m.contextFilter.SetValue("")
 	m.contextFilter.Focus()
 }
 
 func (m *Model) closeContextPanel() {
-	m.showContexts = false
-	m.contextEditMode = contextEditNone
-	m.boardForm = nil
-	m.boardOrder = nil
+	m.overlayState.closeContexts()
 	m.contextEditInput.Blur()
 	m.contextFilter.Blur()
 }
@@ -3384,9 +3349,9 @@ func (m Model) moveToNextColumnCmd(task domain.Task) tea.Cmd {
 	col := m.columns[next]
 	columnID := col.ID
 	status := strings.ToLower(col.Name)
-	service := m.taskService
+	flow := m.taskFlow
 	return func() tea.Msg {
-		err := service.MoveTask(context.Background(), task.ID, &columnID, &status, float64(time.Now().UTC().UnixNano()))
+		err := flow.MoveTask(context.Background(), task.ID, &columnID, &status, float64(time.Now().UTC().UnixNano()))
 		if err != nil {
 			return opResultMsg{err: err}
 		}
@@ -3411,9 +3376,9 @@ func (m Model) moveToPrevColumnCmd(task domain.Task) tea.Cmd {
 	col := m.columns[prev]
 	columnID := col.ID
 	status := strings.ToLower(col.Name)
-	service := m.taskService
+	flow := m.taskFlow
 	return func() tea.Msg {
-		err := service.MoveTask(context.Background(), task.ID, &columnID, &status, float64(time.Now().UTC().UnixNano()))
+		err := flow.MoveTask(context.Background(), task.ID, &columnID, &status, float64(time.Now().UTC().UnixNano()))
 		if err != nil {
 			return opResultMsg{err: err}
 		}
@@ -3480,109 +3445,64 @@ func (m Model) renderFooter() string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
+// toSelectionState creates a selectionState from the Model's current selection-related fields.
+func (m Model) toSelectionState() selectionState {
+	return selectionState{
+		viewMode:              m.viewMode,
+		columns:               m.columns,
+		tasks:                 m.tasks,
+		selected:              m.selected,
+		activeColumn:          m.activeColumn,
+		kanbanRow:             m.kanbanRow,
+		pendingKanbanTaskID:   m.pendingKanbanTaskID,
+		pendingKanbanColumnID: m.pendingKanbanColumnID,
+	}
+}
+
+// applySelectionState copies the selection-related fields from selectionState back to Model.
+func (m *Model) applySelectionState(s selectionState) {
+	m.selected = s.selected
+	m.activeColumn = s.activeColumn
+	m.kanbanRow = s.kanbanRow
+	m.pendingKanbanTaskID = s.pendingKanbanTaskID
+	m.pendingKanbanColumnID = s.pendingKanbanColumnID
+}
+
 func (m *Model) ensureSelection() {
-	if m.viewMode == viewKanban {
-		if len(m.columns) == 0 {
-			m.activeColumn = 0
-			m.kanbanRow = 0
-			return
-		}
-		if m.activeColumn < 0 {
-			m.activeColumn = 0
-		}
-		if m.activeColumn >= len(m.columns) {
-			m.activeColumn = len(m.columns) - 1
-		}
-		m.ensureKanbanRow()
-		return
-	}
-	if len(m.tasks) == 0 {
-		m.selected = 0
-		return
-	}
-	if m.selected < 0 {
-		m.selected = 0
-	}
-	if m.selected >= len(m.tasks) {
-		m.selected = len(m.tasks) - 1
-	}
+	s := m.toSelectionState()
+	s.ensureSelection()
+	m.applySelectionState(s)
 }
 
 func (m *Model) setActiveColumnByID(columnID string) {
-	if strings.TrimSpace(columnID) == "" {
-		return
-	}
-	for i, col := range m.columns {
-		if col.ID == columnID {
-			m.activeColumn = i
-			return
-		}
-	}
+	s := m.toSelectionState()
+	s.setActiveColumnByID(columnID)
+	m.applySelectionState(s)
 }
 
 func (m *Model) restorePendingKanbanSelection() bool {
-	if m.viewMode != viewKanban {
-		m.pendingKanbanTaskID = ""
-		m.pendingKanbanColumnID = ""
-		return false
-	}
-	if strings.TrimSpace(m.pendingKanbanTaskID) == "" || strings.TrimSpace(m.pendingKanbanColumnID) == "" {
-		return false
-	}
-
-	defer func() {
-		m.pendingKanbanTaskID = ""
-		m.pendingKanbanColumnID = ""
-	}()
-
-	m.setActiveColumnByID(m.pendingKanbanColumnID)
-	tasks := m.tasksForColumn(m.pendingKanbanColumnID)
-	for i, task := range tasks {
-		if task.ID == m.pendingKanbanTaskID {
-			m.kanbanRow = i
-			return true
-		}
-	}
-	return false
+	s := m.toSelectionState()
+	ok := s.restorePendingKanbanSelection()
+	m.applySelectionState(s)
+	return ok
 }
 
 func (m *Model) ensureKanbanRow() {
-	if len(m.columns) == 0 {
-		m.kanbanRow = 0
-		return
-	}
-	colID := m.columns[m.activeColumn].ID
-	tasks := m.tasksForColumn(colID)
-	if len(tasks) == 0 {
-		m.kanbanRow = 0
-		return
-	}
-	if m.kanbanRow < 0 {
-		m.kanbanRow = 0
-	}
-	if m.kanbanRow >= len(tasks) {
-		m.kanbanRow = len(tasks) - 1
-	}
+	s := m.toSelectionState()
+	s.ensureKanbanRow()
+	m.applySelectionState(s)
 }
 
 func (m *Model) moveUp() {
-	if m.viewMode == viewKanban {
-		m.kanbanRow--
-		m.ensureKanbanRow()
-		return
-	}
-	m.selected--
-	m.ensureSelection()
+	s := m.toSelectionState()
+	s.moveUp()
+	m.applySelectionState(s)
 }
 
 func (m *Model) moveDown() {
-	if m.viewMode == viewKanban {
-		m.kanbanRow++
-		m.ensureKanbanRow()
-		return
-	}
-	m.selected++
-	m.ensureSelection()
+	s := m.toSelectionState()
+	s.moveDown()
+	m.applySelectionState(s)
 }
 
 func (m *Model) cycleColumnFilter() {
@@ -3594,40 +3514,13 @@ func (m *Model) cycleColumnFilter() {
 }
 
 func (m Model) currentTask() (domain.Task, bool) {
-	if len(m.tasks) == 0 {
-		return domain.Task{}, false
-	}
-	if m.viewMode == viewKanban {
-		if len(m.columns) == 0 {
-			return domain.Task{}, false
-		}
-		col := m.columns[m.activeColumn]
-		tasks := m.tasksForColumn(col.ID)
-		if len(tasks) == 0 || m.kanbanRow < 0 || m.kanbanRow >= len(tasks) {
-			return domain.Task{}, false
-		}
-		return tasks[m.kanbanRow], true
-	}
-	if m.selected < 0 || m.selected >= len(m.tasks) {
-		return domain.Task{}, false
-	}
-	return m.tasks[m.selected], true
+	s := m.toSelectionState()
+	return s.currentTask()
 }
 
 func (m Model) tasksForColumn(columnID string) []domain.Task {
-	result := make([]domain.Task, 0)
-	for _, t := range m.tasks {
-		if t.ColumnID != nil && *t.ColumnID == columnID {
-			result = append(result, t)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].Position == result[j].Position {
-			return result[i].UpdatedAt.After(result[j].UpdatedAt)
-		}
-		return result[i].Position < result[j].Position
-	})
-	return result
+	s := m.toSelectionState()
+	return s.tasksForColumn(columnID)
 }
 
 func (m Model) loadTasksCmd() tea.Cmd {
@@ -3637,9 +3530,9 @@ func (m Model) loadTasksCmd() tea.Cmd {
 		TitleQuery:  m.titleFilter,
 		ColumnID:    m.columnFilter,
 	}
-	service := m.taskService
+	flow := m.taskFlow
 	return func() tea.Msg {
-		tasks, err := service.ListTasks(context.Background(), filters)
+		tasks, err := flow.ListTasks(context.Background(), filters)
 		return tasksLoadedMsg{tasks: tasks, err: err}
 	}
 }

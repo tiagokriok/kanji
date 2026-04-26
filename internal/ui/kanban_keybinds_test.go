@@ -100,12 +100,11 @@ func TestMovedKanbanCardKeepsSelectionAfterReload(t *testing.T) {
 }
 
 func kanbanMoveTestModel(repo *kanbanMoveRepo) (Model, string) {
-	service := application.NewTaskService(repo)
 	firstColumnID := "col-1"
 	secondColumnID := "col-2"
 
 	model := Model{
-		taskService: service,
+		taskFlow: application.NewTaskFlow(repo),
 		columns: []domain.Column{
 			{ID: firstColumnID, Name: "Todo"},
 			{ID: secondColumnID, Name: "Doing"},

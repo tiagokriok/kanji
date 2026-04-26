@@ -66,18 +66,19 @@ func run() error {
 	taskRepo := repositories.NewTaskRepository(adapter)
 	commentRepo := repositories.NewCommentRepository(adapter)
 	taskService := application.NewTaskService(taskRepo)
+	taskFlow := application.NewTaskFlow(taskRepo)
 	commentService := application.NewCommentService(commentRepo)
 	contextService := application.NewContextService(setupRepo)
 
 	if *seedOnly {
-		if err := seedSampleData(ctx, taskService, commentService, contextService, setup); err != nil {
+		if err := seedSampleData(ctx, taskService, taskFlow, commentService, contextService, setup); err != nil {
 			return err
 		}
 		fmt.Println("seed completed")
 		return nil
 	}
 
-	model := ui.NewModel(taskService, commentService, contextService, setup)
+	model := ui.NewModel(taskService, taskFlow, commentService, contextService, setup)
 	program := tea.NewProgram(model, tea.WithAltScreen())
 	_, err = program.Run()
 	return err
@@ -111,6 +112,7 @@ type seedWorkspace struct {
 func seedSampleData(
 	ctx context.Context,
 	taskService *application.TaskService,
+	taskFlow *application.TaskFlow,
 	commentService *application.CommentService,
 	contextService *application.ContextService,
 	setup application.BootstrapResult,
@@ -339,7 +341,7 @@ func seedSampleData(
 			if err != nil {
 				return err
 			}
-			existingTasks, err := taskService.ListTasks(ctx, application.ListTaskFilters{
+			existingTasks, err := taskFlow.ListTasks(ctx, application.ListTaskFilters{
 				WorkspaceID: workspace.ID,
 				BoardID:     board.ID,
 			})

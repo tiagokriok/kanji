@@ -92,41 +92,11 @@ func (s *TaskService) UpdateTask(ctx context.Context, taskID string, input Updat
 	return s.repo.Update(ctx, taskID, patch)
 }
 
-func (s *TaskService) MoveTask(ctx context.Context, taskID string, columnID, status *string, position float64) error {
-	if strings.TrimSpace(taskID) == "" {
-		return errors.New("task id is required")
-	}
-	if position == 0 {
-		position = float64(time.Now().UTC().UnixNano())
-	}
-	return s.repo.Move(ctx, domain.MoveTaskInput{
-		TaskID:    taskID,
-		ColumnID:  trimStringPointer(columnID),
-		Status:    trimStringPointer(status),
-		Position:  position,
-		UpdatedAt: time.Now().UTC(),
-	})
-}
-
 func (s *TaskService) DeleteTask(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.New("task id is required")
 	}
 	return s.repo.Delete(ctx, id)
-}
-
-func (s *TaskService) ListTasks(ctx context.Context, filters ListTaskFilters) ([]domain.Task, error) {
-	if strings.TrimSpace(filters.WorkspaceID) == "" {
-		return nil, errors.New("workspace id is required")
-	}
-	return s.repo.List(ctx, domain.TaskFilter{
-		WorkspaceID: filters.WorkspaceID,
-		BoardID:     filters.BoardID,
-		TitleQuery:  strings.TrimSpace(filters.TitleQuery),
-		ColumnID:    strings.TrimSpace(filters.ColumnID),
-		Status:      strings.TrimSpace(filters.Status),
-		DueSoonBy:   filters.DueSoonBy(time.Now().UTC()),
-	})
 }
 
 func (s *TaskService) GetTask(ctx context.Context, taskID string) (domain.Task, error) {
