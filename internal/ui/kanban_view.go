@@ -20,7 +20,7 @@ func (m Model) renderKanbanView(width, height int) string {
 	for ci, col := range m.columns {
 		headerStyle := lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("15")).
+			Foreground(contrastingTextColorFromHexOrDefault(col.Color, "255")).
 			Background(colorFromHexOrDefault(col.Color, "#333333")).
 			Width(max(1, panelContentWidth-2)).
 			Padding(0, 1)

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -59,4 +60,20 @@ func colorFromHexOrDefault(hex, fallback string) lipgloss.Color {
 		return lipgloss.Color(normalized)
 	}
 	return lipgloss.Color(fallback)
+}
+
+func contrastingTextColorFromHexOrDefault(hex, fallback string) lipgloss.Color {
+	normalized := strings.TrimSpace(hex)
+	if !uiHexColorPattern.MatchString(normalized) {
+		return lipgloss.Color(fallback)
+	}
+
+	red, _ := strconv.ParseInt(normalized[1:3], 16, 64)
+	green, _ := strconv.ParseInt(normalized[3:5], 16, 64)
+	blue, _ := strconv.ParseInt(normalized[5:7], 16, 64)
+	brightness := (red*299 + green*587 + blue*114) / 1000
+	if brightness >= 150 {
+		return lipgloss.Color("232")
+	}
+	return lipgloss.Color("255")
 }
