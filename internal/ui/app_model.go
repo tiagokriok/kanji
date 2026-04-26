@@ -900,30 +900,34 @@ func (m Model) View() string {
 	if m.viewMode == viewList {
 		base = m.renderListScreen()
 	} else {
-		header := m.renderHeader()
-		footer := m.renderFooter()
+		containerWidth := max(40, m.width-2)
+		header := m.renderHeader(containerWidth)
+		footer := lipgloss.NewStyle().Width(containerWidth).Render(m.renderFooter())
 		bodyHeight := m.height - lipgloss.Height(header) - lipgloss.Height(footer)
 		if bodyHeight < 5 {
 			bodyHeight = 5
 		}
 
-		mainPane := m.renderKanbanView(bodyHeight)
+		detailWidth := 0
+		mainWidth := containerWidth
 		if m.showDetails {
-			detailWidth := m.width / 3
+			detailWidth = m.width / 3
 			if detailWidth < 34 {
 				detailWidth = 34
 			}
-			mainWidth := m.width - detailWidth - 1
+			mainWidth = containerWidth - detailWidth - 1
 			if mainWidth < 20 {
-				mainWidth = m.width
+				mainWidth = containerWidth
 				detailWidth = 0
 			}
-			mainPane = lipgloss.NewStyle().Width(mainWidth).Render(mainPane)
-			if detailWidth > 0 {
-				detailPane := m.renderDetailView(detailWidth, bodyHeight)
-				mainPane = lipgloss.JoinHorizontal(lipgloss.Top, mainPane, detailPane)
-			}
 		}
+
+		mainPane := m.renderKanbanView(mainWidth, bodyHeight)
+		if detailWidth > 0 {
+			detailPane := m.renderDetailView(detailWidth, bodyHeight)
+			mainPane = lipgloss.JoinHorizontal(lipgloss.Top, mainPane, detailPane)
+		}
+		mainPane = lipgloss.NewStyle().Width(containerWidth).Height(bodyHeight).Render(mainPane)
 
 		content := lipgloss.JoinVertical(lipgloss.Left, header, mainPane, footer)
 		base = lipgloss.NewStyle().Padding(0, 1).Render(content)
@@ -3387,7 +3391,7 @@ func (m Model) deleteTaskCmd(id string) tea.Cmd {
 	}
 }
 
-func (m Model) renderHeader() string {
+func (m Model) renderHeader(width int) string {
 	viewLabel := "List"
 	if m.viewMode == viewKanban {
 		viewLabel = "Kanban"
@@ -3402,10 +3406,10 @@ func (m Model) renderHeader() string {
 
 	left := headerStyle.Render(fmt.Sprintf("%s / %s", m.workspaceName, m.boardName))
 	right := metaStyle.Render(fmt.Sprintf("view:%s  sort:%s  filter:%s  search:%q", viewLabel, strings.ToLower(m.sortModeLabel()), strings.Join(filterParts, ","), m.titleFilter))
-	if m.width > 20 {
+	if width > 20 {
 		return lipgloss.JoinHorizontal(lipgloss.Top,
-			lipgloss.NewStyle().Width(m.width/2).Render(left),
-			lipgloss.NewStyle().Width(max(1, m.width-m.width/2-2)).Align(lipgloss.Right).Render(right),
+			lipgloss.NewStyle().Width(width/2).Render(left),
+			lipgloss.NewStyle().Width(max(1, width-width/2-1)).Align(lipgloss.Right).Render(right),
 		)
 	}
 	return left + " " + right
