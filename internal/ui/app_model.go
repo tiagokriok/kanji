@@ -3,8 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
+
 	"sort"
 	"strings"
 	"time"
@@ -240,17 +239,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case commentsLoadedMsg:
 		return m.handleCommentsLoaded(msg)
 	case descriptionEditedMsg:
-		if m.editingDescTask == "" {
-			return m, nil
-		}
-		taskID := m.editingDescTask
-		m.editingDescTask = ""
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = fmt.Sprintf("editor error: %v", msg.err)
-			return m, nil
-		}
-		return m, m.updateTaskDescriptionCmd(taskID, msg.content)
+		return m.handleExternalDescriptionEdited(msg)
 	case opResultMsg:
 		return m.handleOpResult(msg)
 	case tea.KeyMsg:
@@ -392,88 +381,6 @@ func (m Model) View() string {
 		return m.renderTaskViewerPanel(base)
 	}
 	return base
-}
-
-func (m *Model) startExternalDescriptionEdit(task domain.Task) tea.Cmd {
-	m.editingDescTask = task.ID
-	m.statusLine = ""
-	return openDescriptionEditorCmd(task.DescriptionMD)
-}
-
-func summarizeDescription(description string) string {
-	trimmed := strings.TrimSpace(description)
-	if trimmed == "" {
-		return ""
-	}
-	firstLine := strings.Split(trimmed, "\n")[0]
-	if len(firstLine) > 80 {
-		return firstLine[:77] + "..."
-	}
-	return firstLine
-}
-
-func chooseEditor() string {
-	if editor := strings.TrimSpace(os.Getenv("EDITOR")); editor != "" {
-		return editor
-	}
-	for _, candidate := range []string{"nvim", "vim", "vi"} {
-		if _, err := exec.LookPath(candidate); err == nil {
-			return candidate
-		}
-	}
-	return ""
-}
-
-func openDescriptionEditorCmd(initial string) tea.Cmd {
-	editor := chooseEditor()
-	if editor == "" {
-		return func() tea.Msg {
-			return descriptionEditedMsg{err: fmt.Errorf("no editor found (set $EDITOR or install nvim/vim/vi)")}
-		}
-	}
-
-	tmpFile, err := os.CreateTemp("", "kanji-description-*.md")
-	if err != nil {
-		return func() tea.Msg {
-			return descriptionEditedMsg{err: err}
-		}
-	}
-
-	path := tmpFile.Name()
-	if _, err := tmpFile.WriteString(initial); err != nil {
-		_ = tmpFile.Close()
-		_ = os.Remove(path)
-		return func() tea.Msg {
-			return descriptionEditedMsg{err: err}
-		}
-	}
-	if err := tmpFile.Close(); err != nil {
-		_ = os.Remove(path)
-		return func() tea.Msg {
-			return descriptionEditedMsg{err: err}
-		}
-	}
-
-	parts := strings.Fields(editor)
-	if len(parts) == 0 {
-		_ = os.Remove(path)
-		return func() tea.Msg {
-			return descriptionEditedMsg{err: fmt.Errorf("invalid editor command")}
-		}
-	}
-
-	cmd := exec.Command(parts[0], append(parts[1:], path)...)
-	return tea.ExecProcess(cmd, func(execErr error) tea.Msg {
-		defer os.Remove(path)
-		if execErr != nil {
-			return descriptionEditedMsg{err: execErr}
-		}
-		content, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return descriptionEditedMsg{err: readErr}
-		}
-		return descriptionEditedMsg{content: strings.TrimRight(string(content), "\n")}
-	})
 }
 
 func (m Model) createTaskWithDetailsCmd(title, description string, priority int, dueAt *time.Time, boardID, columnID, status *string) tea.Cmd {
