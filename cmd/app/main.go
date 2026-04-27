@@ -52,7 +52,8 @@ func run() error {
 		return nil
 	}
 
-	setupRepo := repositories.NewSetupRepository(adapter)
+	s := store.New(adapter)
+	setupRepo := repositories.NewSetupRepository(s)
 	bootstrapService := application.NewBootstrapService(setupRepo)
 	setup, err := bootstrapService.EnsureDefaultSetup(ctx)
 	if err != nil {
@@ -64,7 +65,6 @@ func run() error {
 		return fmt.Errorf("provider mismatch: expected %s got %s", localProvider.Type(), setup.Provider.Type)
 	}
 
-	s := store.New(adapter)
 	taskRepo := repositories.NewTaskRepository(s)
 	commentRepo := repositories.NewCommentRepository(s)
 	taskService := application.NewTaskService(taskRepo)

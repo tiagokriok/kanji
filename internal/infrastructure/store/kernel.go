@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/tiagokriok/kanji/internal/infrastructure/db"
@@ -31,7 +32,7 @@ func (k *kernel) InTx(ctx context.Context, fn func(Tx) error) error {
 	}()
 
 	qtx := k.adapter.Queries().WithTx(tx)
-	bound := &txBound{queries: qtx}
+	bound := &txBound{queries: qtx, tx: tx}
 
 	if err := fn(bound); err != nil {
 		return err
@@ -44,8 +45,13 @@ func (k *kernel) InTx(ctx context.Context, fn func(Tx) error) error {
 
 type txBound struct {
 	queries *sqlc.Queries
+	tx      *sql.Tx
 }
 
 func (t *txBound) Queries() *sqlc.Queries {
 	return t.queries
+}
+
+func (t *txBound) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return t.tx.ExecContext(ctx, query, args...)
 }

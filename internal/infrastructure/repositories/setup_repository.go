@@ -8,24 +8,20 @@ import (
 	"time"
 
 	"github.com/tiagokriok/kanji/internal/domain"
-	"github.com/tiagokriok/kanji/internal/infrastructure/db"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
+	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
 
 type SetupRepository struct {
-	db      db.Adapter
-	queries *sqlc.Queries
+	store store.Store
 }
 
-func NewSetupRepository(adapter db.Adapter) *SetupRepository {
-	return &SetupRepository{
-		db:      adapter,
-		queries: adapter.Queries(),
-	}
+func NewSetupRepository(s store.Store) *SetupRepository {
+	return &SetupRepository{store: s}
 }
 
 func (r *SetupRepository) ListProviders(ctx context.Context) ([]domain.Provider, error) {
-	items, err := r.queries.ListProviders(ctx)
+	items, err := r.store.Queries().ListProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -37,30 +33,23 @@ func (r *SetupRepository) ListProviders(ctx context.Context) ([]domain.Provider,
 }
 
 func (r *SetupRepository) CreateProvider(ctx context.Context, provider domain.Provider) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for create provider: %w", err)
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		return qtx.CreateProvider(ctx, sqlc.CreateProviderParams{
+			ID:        provider.ID,
+			Type:      provider.Type,
+			Name:      provider.Name,
+			AuthJSON:  nullString(provider.AuthJSON),
+			CreatedAt: provider.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}); err != nil {
+		return fmt.Errorf("create provider: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	qtx := r.queries.WithTx(tx)
-	err = qtx.CreateProvider(ctx, sqlc.CreateProviderParams{
-		ID:        provider.ID,
-		Type:      provider.Type,
-		Name:      provider.Name,
-		AuthJSON:  nullString(provider.AuthJSON),
-		CreatedAt: provider.CreatedAt.UTC().Format(time.RFC3339),
-	})
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *SetupRepository) ListWorkspaces(ctx context.Context) ([]domain.Workspace, error) {
-	items, err := r.queries.ListWorkspaces(ctx)
+	items, err := r.store.Queries().ListWorkspaces(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -72,25 +61,18 @@ func (r *SetupRepository) ListWorkspaces(ctx context.Context) ([]domain.Workspac
 }
 
 func (r *SetupRepository) CreateWorkspace(ctx context.Context, workspace domain.Workspace) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for create workspace: %w", err)
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		return qtx.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+			ID:         workspace.ID,
+			ProviderID: workspace.ProviderID,
+			RemoteID:   nullString(workspace.RemoteID),
+			Name:       workspace.Name,
+		})
+	}); err != nil {
+		return fmt.Errorf("create workspace: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	qtx := r.queries.WithTx(tx)
-	err = qtx.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
-		ID:         workspace.ID,
-		ProviderID: workspace.ProviderID,
-		RemoteID:   nullString(workspace.RemoteID),
-		Name:       workspace.Name,
-	})
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *SetupRepository) RenameWorkspace(ctx context.Context, workspaceID, name string) error {
@@ -103,22 +85,16 @@ func (r *SetupRepository) RenameWorkspace(ctx context.Context, workspaceID, name
 		return fmt.Errorf("workspace name is required")
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for rename workspace: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	if _, err := tx.ExecContext(ctx, `UPDATE workspaces SET name = ? WHERE id = ?`, name, workspaceID); err != nil {
-		return fmt.Errorf("rename workspace: %w", err)
-	}
-	return tx.Commit()
+	return r.store.InTx(ctx, func(tx store.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE workspaces SET name = ? WHERE id = ?`, name, workspaceID); err != nil {
+			return fmt.Errorf("rename workspace: %w", err)
+		}
+		return nil
+	})
 }
 
 func (r *SetupRepository) ListBoards(ctx context.Context, workspaceID string) ([]domain.Board, error) {
-	items, err := r.queries.ListBoards(ctx, workspaceID)
+	items, err := r.store.Queries().ListBoards(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,25 +106,19 @@ func (r *SetupRepository) ListBoards(ctx context.Context, workspaceID string) ([
 }
 
 func (r *SetupRepository) CreateBoard(ctx context.Context, board domain.Board) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for create board: %w", err)
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		return qtx.CreateBoard(ctx, sqlc.CreateBoardParams{
+			ID:          board.ID,
+			WorkspaceID: board.WorkspaceID,
+			RemoteID:    nullString(board.RemoteID),
+			Name:        board.Name,
+			ViewDefault: board.ViewDefault,
+		})
+	}); err != nil {
+		return fmt.Errorf("create board: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-	qtx := r.queries.WithTx(tx)
-	err = qtx.CreateBoard(ctx, sqlc.CreateBoardParams{
-		ID:          board.ID,
-		WorkspaceID: board.WorkspaceID,
-		RemoteID:    nullString(board.RemoteID),
-		Name:        board.Name,
-		ViewDefault: board.ViewDefault,
-	})
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *SetupRepository) RenameBoard(ctx context.Context, boardID, name string) error {
@@ -161,22 +131,16 @@ func (r *SetupRepository) RenameBoard(ctx context.Context, boardID, name string)
 		return fmt.Errorf("board name is required")
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for rename board: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	if _, err := tx.ExecContext(ctx, `UPDATE boards SET name = ? WHERE id = ?`, name, boardID); err != nil {
-		return fmt.Errorf("rename board: %w", err)
-	}
-	return tx.Commit()
+	return r.store.InTx(ctx, func(tx store.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE boards SET name = ? WHERE id = ?`, name, boardID); err != nil {
+			return fmt.Errorf("rename board: %w", err)
+		}
+		return nil
+	})
 }
 
 func (r *SetupRepository) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {
-	items, err := r.queries.ListColumns(ctx, boardID)
+	items, err := r.store.Queries().ListColumns(ctx, boardID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,31 +152,25 @@ func (r *SetupRepository) ListColumns(ctx context.Context, boardID string) ([]do
 }
 
 func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for create column: %w", err)
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		var wip sql.NullInt64
+		if column.WIPLimit != nil {
+			wip = sql.NullInt64{Int64: int64(*column.WIPLimit), Valid: true}
+		}
+		return qtx.CreateColumn(ctx, sqlc.CreateColumnParams{
+			ID:       column.ID,
+			BoardID:  column.BoardID,
+			RemoteID: nullString(column.RemoteID),
+			Name:     column.Name,
+			Color:    normalizeHexColor(column.Color),
+			Position: int64(column.Position),
+			WipLimit: wip,
+		})
+	}); err != nil {
+		return fmt.Errorf("create column: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-	qtx := r.queries.WithTx(tx)
-	var wip sql.NullInt64
-	if column.WIPLimit != nil {
-		wip = sql.NullInt64{Int64: int64(*column.WIPLimit), Valid: true}
-	}
-	err = qtx.CreateColumn(ctx, sqlc.CreateColumnParams{
-		ID:       column.ID,
-		BoardID:  column.BoardID,
-		RemoteID: nullString(column.RemoteID),
-		Name:     column.Name,
-		Color:    normalizeHexColor(column.Color),
-		Position: int64(column.Position),
-		WipLimit: wip,
-	})
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *SetupRepository) ReorderColumns(ctx context.Context, boardID string, orderedColumnIDs []string) error {
@@ -224,40 +182,30 @@ func (r *SetupRepository) ReorderColumns(ctx context.Context, boardID string, or
 		return fmt.Errorf("at least one column id is required")
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for reorder columns: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	for idx, columnID := range orderedColumnIDs {
-		columnID = strings.TrimSpace(columnID)
-		if columnID == "" {
-			return fmt.Errorf("column id at position %d is empty", idx+1)
+	return r.store.InTx(ctx, func(tx store.Tx) error {
+		for idx, columnID := range orderedColumnIDs {
+			columnID = strings.TrimSpace(columnID)
+			if columnID == "" {
+				return fmt.Errorf("column id at position %d is empty", idx+1)
+			}
+			result, execErr := tx.ExecContext(
+				ctx,
+				`UPDATE columns SET position = ? WHERE id = ? AND board_id = ?`,
+				idx+1,
+				columnID,
+				boardID,
+			)
+			if execErr != nil {
+				return fmt.Errorf("update position for column %s: %w", columnID, execErr)
+			}
+			affected, affErr := result.RowsAffected()
+			if affErr != nil {
+				return fmt.Errorf("rows affected for column %s: %w", columnID, affErr)
+			}
+			if affected == 0 {
+				return fmt.Errorf("column %s not found in board", columnID)
+			}
 		}
-		result, execErr := tx.ExecContext(
-			ctx,
-			`UPDATE columns SET position = ? WHERE id = ? AND board_id = ?`,
-			idx+1,
-			columnID,
-			boardID,
-		)
-		if execErr != nil {
-			return fmt.Errorf("update position for column %s: %w", columnID, execErr)
-		}
-		affected, affErr := result.RowsAffected()
-		if affErr != nil {
-			return fmt.Errorf("rows affected for column %s: %w", columnID, affErr)
-		}
-		if affected == 0 {
-			return fmt.Errorf("column %s not found in board", columnID)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit reorder columns: %w", err)
-	}
-	return nil
+		return nil
+	})
 }
