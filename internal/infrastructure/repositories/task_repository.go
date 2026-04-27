@@ -22,28 +22,23 @@ func (r *TaskRepository) Create(ctx context.Context, task domain.Task) error {
 	return r.store.Write(ctx, "create task", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		return qtx.CreateTask(ctx, sqlc.CreateTaskParams{
-			ID:            task.ID,
-			ProviderID:    task.ProviderID,
-			WorkspaceID:   task.WorkspaceID,
-			BoardID:       nullString(task.BoardID),
-			ColumnID:      nullString(task.ColumnID),
-			RemoteID:      nullString(task.RemoteID),
-			Title:         task.Title,
-			DescriptionMd: task.DescriptionMD,
-			Status:        nullString(task.Status),
-			Priority:      int64(task.Priority),
-			DueAt:         nullableTimeToString(task.DueAt),
-			EstimateMinutes: func() sql.NullInt64 {
-				if task.EstimateMinutes == nil {
-					return sql.NullInt64{}
-				}
-				return sql.NullInt64{Int64: int64(*task.EstimateMinutes), Valid: true}
-			}(),
-			Assignee:   nullString(task.Assignee),
-			LabelsJSON: marshalLabels(task.Labels),
-			Position:   task.Position,
-			CreatedAt:  task.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:  task.UpdatedAt.UTC().Format(time.RFC3339),
+			ID:              task.ID,
+			ProviderID:      task.ProviderID,
+			WorkspaceID:     task.WorkspaceID,
+			BoardID:         nullString(task.BoardID),
+			ColumnID:        nullString(task.ColumnID),
+			RemoteID:        nullString(task.RemoteID),
+			Title:           task.Title,
+			DescriptionMd:   task.DescriptionMD,
+			Status:          nullString(task.Status),
+			Priority:        int64(task.Priority),
+			DueAt:           nullableTimeToString(task.DueAt),
+			EstimateMinutes: nullInt(task.EstimateMinutes),
+			Assignee:        nullString(task.Assignee),
+			LabelsJSON:      marshalLabels(task.Labels),
+			Position:        task.Position,
+			CreatedAt:       task.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:       task.UpdatedAt.UTC().Format(time.RFC3339),
 		})
 	})
 }

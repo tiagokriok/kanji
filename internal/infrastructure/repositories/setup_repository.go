@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -147,10 +146,6 @@ func (r *SetupRepository) ListColumns(ctx context.Context, boardID string) ([]do
 func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column) error {
 	return r.store.Write(ctx, "create column", func(tx store.Tx) error {
 		qtx := tx.Queries()
-		var wip sql.NullInt64
-		if column.WIPLimit != nil {
-			wip = sql.NullInt64{Int64: int64(*column.WIPLimit), Valid: true}
-		}
 		return qtx.CreateColumn(ctx, sqlc.CreateColumnParams{
 			ID:       column.ID,
 			BoardID:  column.BoardID,
@@ -158,7 +153,7 @@ func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column
 			Name:     column.Name,
 			Color:    normalizeHexColor(column.Color),
 			Position: int64(column.Position),
-			WipLimit: wip,
+			WipLimit: nullInt(column.WIPLimit),
 		})
 	})
 }

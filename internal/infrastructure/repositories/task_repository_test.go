@@ -103,6 +103,42 @@ func TestTaskRepository_Create(t *testing.T) {
 	}
 }
 
+func TestTaskRepository_Create_WithEstimateMinutes(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
+
+	repo := NewTaskRepository(store.New(adapter))
+	estimate := 120
+	task := domain.Task{
+		ID:              "t-create-est",
+		ProviderID:      providerID,
+		WorkspaceID:     workspaceID,
+		BoardID:         &boardID,
+		ColumnID:        &columnID,
+		Title:           "Estimate Test",
+		Priority:        0,
+		EstimateMinutes: &estimate,
+		Labels:          []string{},
+		Position:        1,
+		CreatedAt:       time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		UpdatedAt:       time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	if err := repo.Create(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	got, err := repo.GetByID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get by id: %v", err)
+	}
+	if got.EstimateMinutes == nil || *got.EstimateMinutes != estimate {
+		t.Errorf("EstimateMinutes = %v, want %d", got.EstimateMinutes, estimate)
+	}
+}
+
 func TestTaskRepository_Move(t *testing.T) {
 	adapter := newTestAdapter(t)
 	ctx := context.Background()

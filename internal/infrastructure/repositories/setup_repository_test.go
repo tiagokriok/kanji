@@ -511,6 +511,53 @@ func TestSetupRepository_CreateColumn(t *testing.T) {
 	}
 }
 
+func TestSetupRepository_CreateColumn_WithWIPLimit(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID := seedProvider(t, ctx, q)
+	if err := q.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+		ID:         "w-col-wip",
+		ProviderID: providerID,
+		Name:       "Workspace",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          "b-col-wip",
+		WorkspaceID: "w-col-wip",
+		Name:        "Board",
+		ViewDefault: "kanban",
+	}); err != nil {
+		t.Fatalf("create board: %v", err)
+	}
+
+	repo := NewSetupRepository(store.New(adapter))
+	wip := 5
+	column := domain.Column{
+		ID:       "c-create-wip",
+		BoardID:  "b-col-wip",
+		Name:     "In Progress",
+		Color:    "#00FF00",
+		Position: 1,
+		WIPLimit: &wip,
+	}
+	if err := repo.CreateColumn(ctx, column); err != nil {
+		t.Fatalf("create column: %v", err)
+	}
+
+	got, err := repo.ListColumns(ctx, "b-col-wip")
+	if err != nil {
+		t.Fatalf("list columns: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(columns) = %d, want 1", len(got))
+	}
+	if got[0].WIPLimit == nil || *got[0].WIPLimit != wip {
+		t.Errorf("WIPLimit = %v, want %d", got[0].WIPLimit, wip)
+	}
+}
+
 func TestSetupRepository_CreateColumn_ErrorContext(t *testing.T) {
 	adapter := newTestAdapter(t)
 	ctx := context.Background()
