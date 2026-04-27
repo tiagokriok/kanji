@@ -15,6 +15,7 @@ import (
 	"github.com/tiagokriok/kanji/internal/infrastructure/db"
 	"github.com/tiagokriok/kanji/internal/infrastructure/providers"
 	"github.com/tiagokriok/kanji/internal/infrastructure/repositories"
+	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 	"github.com/tiagokriok/kanji/internal/ui"
 )
 
@@ -63,8 +64,9 @@ func run() error {
 		return fmt.Errorf("provider mismatch: expected %s got %s", localProvider.Type(), setup.Provider.Type)
 	}
 
-	taskRepo := repositories.NewTaskRepository(adapter)
-	commentRepo := repositories.NewCommentRepository(adapter)
+	s := store.New(adapter)
+	taskRepo := repositories.NewTaskRepository(s)
+	commentRepo := repositories.NewCommentRepository(s)
 	taskService := application.NewTaskService(taskRepo)
 	taskFlow := application.NewTaskFlow(taskRepo)
 	commentService := application.NewCommentService(commentRepo)

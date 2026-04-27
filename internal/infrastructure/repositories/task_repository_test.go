@@ -8,6 +8,7 @@ import (
 
 	"github.com/tiagokriok/kanji/internal/domain"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
+	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
 
 func seedProviderWorkspaceBoardColumn(t *testing.T, ctx context.Context, q *sqlc.Queries) (providerID, workspaceID, boardID, columnID string) {
@@ -58,7 +59,7 @@ func TestTaskRepository_Create(t *testing.T) {
 	q := adapter.Queries()
 	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
 
-	repo := NewTaskRepository(adapter)
+	repo := NewTaskRepository(store.New(adapter))
 	task := domain.Task{
 		ID:            "t-create",
 		ProviderID:    providerID,
@@ -108,7 +109,7 @@ func TestTaskRepository_Move(t *testing.T) {
 	q := adapter.Queries()
 	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
 
-	repo := NewTaskRepository(adapter)
+	repo := NewTaskRepository(store.New(adapter))
 	task := domain.Task{
 		ID:          "t-move",
 		ProviderID:  providerID,
@@ -171,7 +172,7 @@ func TestTaskRepository_Update(t *testing.T) {
 	q := adapter.Queries()
 	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
 
-	repo := NewTaskRepository(adapter)
+	repo := NewTaskRepository(store.New(adapter))
 	task := domain.Task{
 		ID:            "t-update",
 		ProviderID:    providerID,
@@ -228,7 +229,7 @@ func TestTaskRepository_Create_ErrorContext(t *testing.T) {
 	q := adapter.Queries()
 	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
 
-	repo := NewTaskRepository(adapter)
+	repo := NewTaskRepository(store.New(adapter))
 	task := domain.Task{
 		ID:          "t-dup",
 		ProviderID:  providerID,
@@ -271,7 +272,7 @@ func TestTaskRepository_Update_ErrorContext(t *testing.T) {
 	q := adapter.Queries()
 	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
 
-	repo := NewTaskRepository(adapter)
+	repo := NewTaskRepository(store.New(adapter))
 	task := domain.Task{
 		ID:          "t-update-err",
 		ProviderID:  providerID,
@@ -309,13 +310,47 @@ func TestTaskRepository_Update_ErrorContext(t *testing.T) {
 	}
 }
 
+func TestTaskRepository_Delete(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
+
+	repo := NewTaskRepository(store.New(adapter))
+	task := domain.Task{
+		ID:          "t-delete",
+		ProviderID:  providerID,
+		WorkspaceID: workspaceID,
+		BoardID:     &boardID,
+		ColumnID:    &columnID,
+		Title:       "Delete Test",
+		Priority:    0,
+		Labels:      []string{},
+		Position:    1,
+		CreatedAt:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		UpdatedAt:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	if err := repo.Create(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := repo.Delete(ctx, task.ID); err != nil {
+		t.Fatalf("delete task: %v", err)
+	}
+
+	_, err := repo.GetByID(ctx, task.ID)
+	if err == nil {
+		t.Fatal("expected error after delete, got nil")
+	}
+}
+
 func TestTaskRepository_Move_ErrorContext(t *testing.T) {
 	adapter := newTestAdapter(t)
 	ctx := context.Background()
 	q := adapter.Queries()
 	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
 
-	repo := NewTaskRepository(adapter)
+	repo := NewTaskRepository(store.New(adapter))
 	task := domain.Task{
 		ID:          "t-move-err",
 		ProviderID:  providerID,

@@ -7,23 +7,16 @@ import (
 	"time"
 
 	"github.com/tiagokriok/kanji/internal/domain"
-	"github.com/tiagokriok/kanji/internal/infrastructure/db"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
 	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
 
 type TaskRepository struct {
-	store   store.Store
-	queries *sqlc.Queries
-	db      db.Adapter
+	store store.Store
 }
 
-func NewTaskRepository(adapter db.Adapter) *TaskRepository {
-	return &TaskRepository{
-		store:   store.New(adapter),
-		queries: adapter.Queries(),
-		db:      adapter,
-	}
+func NewTaskRepository(s store.Store) *TaskRepository {
+	return &TaskRepository{store: s}
 }
 
 func (r *TaskRepository) Create(ctx context.Context, task domain.Task) error {
@@ -83,7 +76,7 @@ func (r *TaskRepository) Update(ctx context.Context, taskID string, patch domain
 }
 
 func (r *TaskRepository) GetByID(ctx context.Context, taskID string) (domain.Task, error) {
-	item, err := r.queries.GetTask(ctx, taskID)
+	item, err := r.store.Queries().GetTask(ctx, taskID)
 	if err != nil {
 		return domain.Task{}, err
 	}
@@ -103,7 +96,7 @@ func (r *TaskRepository) List(ctx context.Context, filter domain.TaskFilter) ([]
 		arg.DueSoonBefore = filter.DueSoonBy.UTC().Format(time.RFC3339)
 	}
 
-	items, err := r.queries.ListTasks(ctx, arg)
+	items, err := r.store.Queries().ListTasks(ctx, arg)
 	if err != nil {
 		return nil, err
 	}
@@ -131,12 +124,11 @@ func (r *TaskRepository) Move(ctx context.Context, input domain.MoveTaskInput) e
 }
 
 func (r *TaskRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.db.Raw().ExecContext(ctx, "DELETE FROM tasks WHERE id = ?", id)
-	return err
+	return r.store.Queries().DeleteTask(ctx, id)
 }
 
 func (r *TaskRepository) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {
-	items, err := r.queries.ListColumns(ctx, boardID)
+	items, err := r.store.Queries().ListColumns(ctx, boardID)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +140,7 @@ func (r *TaskRepository) ListColumns(ctx context.Context, boardID string) ([]dom
 }
 
 func (r *TaskRepository) ListBoards(ctx context.Context, workspaceID string) ([]domain.Board, error) {
-	items, err := r.queries.ListBoards(ctx, workspaceID)
+	items, err := r.store.Queries().ListBoards(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}

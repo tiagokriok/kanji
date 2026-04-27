@@ -472,6 +472,15 @@ func (q *Queries) MoveTask(ctx context.Context, arg MoveTaskParams) error {
 	return err
 }
 
+const deleteTask = `-- name: DeleteTask :exec
+DELETE FROM tasks WHERE id = ?
+`
+
+func (q *Queries) DeleteTask(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteTask, id)
+	return err
+}
+
 const createComment = `-- name: CreateComment :exec
 INSERT INTO comments (id, task_id, provider_id, remote_id, body_md, author, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)

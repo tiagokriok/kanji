@@ -70,6 +70,32 @@ func TestKernel_InTx_CommitsOnSuccess(t *testing.T) {
 	}
 }
 
+func TestKernel_Queries_ReturnsWorkingQueries(t *testing.T) {
+	adapter := newTestAdapter(t)
+	s := New(adapter)
+
+	ctx := context.Background()
+	if err := s.Queries().CreateProvider(ctx, sqlc.CreateProviderParams{
+		ID:        "p-queries",
+		Type:      "local",
+		Name:      "Query Test",
+		CreatedAt: "2024-01-01T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("create provider via queries: %v", err)
+	}
+
+	items, err := s.Queries().ListProviders(ctx)
+	if err != nil {
+		t.Fatalf("list providers via queries: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 provider, got %d", len(items))
+	}
+	if items[0].Name != "Query Test" {
+		t.Errorf("Name = %q, want %q", items[0].Name, "Query Test")
+	}
+}
+
 func TestKernel_InTx_RollbacksOnError(t *testing.T) {
 	adapter := newTestAdapter(t)
 	s := New(adapter)

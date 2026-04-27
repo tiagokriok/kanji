@@ -6,21 +6,16 @@ import (
 	"time"
 
 	"github.com/tiagokriok/kanji/internal/domain"
-	"github.com/tiagokriok/kanji/internal/infrastructure/db"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
 	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
 
 type CommentRepository struct {
-	store   store.Store
-	queries *sqlc.Queries
+	store store.Store
 }
 
-func NewCommentRepository(adapter db.Adapter) *CommentRepository {
-	return &CommentRepository{
-		store:   store.New(adapter),
-		queries: adapter.Queries(),
-	}
+func NewCommentRepository(s store.Store) *CommentRepository {
+	return &CommentRepository{store: s}
 }
 
 func (r *CommentRepository) Create(ctx context.Context, comment domain.Comment) error {
@@ -42,7 +37,7 @@ func (r *CommentRepository) Create(ctx context.Context, comment domain.Comment) 
 }
 
 func (r *CommentRepository) ListByTask(ctx context.Context, taskID string) ([]domain.Comment, error) {
-	items, err := r.queries.ListComments(ctx, taskID)
+	items, err := r.store.Queries().ListComments(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}

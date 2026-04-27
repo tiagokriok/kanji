@@ -9,6 +9,7 @@ import (
 	"github.com/tiagokriok/kanji/internal/domain"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
+	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
 
 func newTestAdapter(t *testing.T) db.Adapter {
@@ -97,7 +98,7 @@ func TestCommentRepository_Create(t *testing.T) {
 
 	task := seedTask(t, ctx, adapter.Queries())
 
-	repo := NewCommentRepository(adapter)
+	repo := NewCommentRepository(store.New(adapter))
 	comment := domain.Comment{
 		ID:         "cm1",
 		TaskID:     task.ID,

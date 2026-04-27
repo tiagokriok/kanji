@@ -125,6 +125,9 @@ UPDATE tasks
 SET column_id = ?, status = ?, position = ?, updated_at = ?
 WHERE id = ?;
 
+-- name: DeleteTask :exec
+DELETE FROM tasks WHERE id = ?;
+
 -- name: CreateComment :exec
 INSERT INTO comments (id, task_id, provider_id, remote_id, body_md, author, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?);
