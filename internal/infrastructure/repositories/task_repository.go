@@ -9,92 +9,75 @@ import (
 	"github.com/tiagokriok/kanji/internal/domain"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
+	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
 
 type TaskRepository struct {
-	db      db.Adapter
+	store   store.Store
 	queries *sqlc.Queries
+	db      db.Adapter
 }
 
 func NewTaskRepository(adapter db.Adapter) *TaskRepository {
 	return &TaskRepository{
-		db:      adapter,
+		store:   store.New(adapter),
 		queries: adapter.Queries(),
+		db:      adapter,
 	}
 }
 
 func (r *TaskRepository) Create(ctx context.Context, task domain.Task) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for create task: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	qtx := r.queries.WithTx(tx)
-	err = qtx.CreateTask(ctx, sqlc.CreateTaskParams{
-		ID:            task.ID,
-		ProviderID:    task.ProviderID,
-		WorkspaceID:   task.WorkspaceID,
-		BoardID:       nullString(task.BoardID),
-		ColumnID:      nullString(task.ColumnID),
-		RemoteID:      nullString(task.RemoteID),
-		Title:         task.Title,
-		DescriptionMd: task.DescriptionMD,
-		Status:        nullString(task.Status),
-		Priority:      int64(task.Priority),
-		DueAt:         nullableTimeToString(task.DueAt),
-		EstimateMinutes: func() sql.NullInt64 {
-			if task.EstimateMinutes == nil {
-				return sql.NullInt64{}
-			}
-			return sql.NullInt64{Int64: int64(*task.EstimateMinutes), Valid: true}
-		}(),
-		Assignee:   nullString(task.Assignee),
-		LabelsJSON: marshalLabels(task.Labels),
-		Position:   task.Position,
-		CreatedAt:  task.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:  task.UpdatedAt.UTC().Format(time.RFC3339),
-	})
-	if err != nil {
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		return qtx.CreateTask(ctx, sqlc.CreateTaskParams{
+			ID:            task.ID,
+			ProviderID:    task.ProviderID,
+			WorkspaceID:   task.WorkspaceID,
+			BoardID:       nullString(task.BoardID),
+			ColumnID:      nullString(task.ColumnID),
+			RemoteID:      nullString(task.RemoteID),
+			Title:         task.Title,
+			DescriptionMd: task.DescriptionMD,
+			Status:        nullString(task.Status),
+			Priority:      int64(task.Priority),
+			DueAt:         nullableTimeToString(task.DueAt),
+			EstimateMinutes: func() sql.NullInt64 {
+				if task.EstimateMinutes == nil {
+					return sql.NullInt64{}
+				}
+				return sql.NullInt64{Int64: int64(*task.EstimateMinutes), Valid: true}
+			}(),
+			Assignee:   nullString(task.Assignee),
+			LabelsJSON: marshalLabels(task.Labels),
+			Position:   task.Position,
+			CreatedAt:  task.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:  task.UpdatedAt.UTC().Format(time.RFC3339),
+		})
+	}); err != nil {
 		return fmt.Errorf("create task: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit create task: %w", err)
 	}
 	return nil
 }
 
 func (r *TaskRepository) Update(ctx context.Context, taskID string, patch domain.TaskPatch) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for update task: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	qtx := r.queries.WithTx(tx)
-	arg := sqlc.UpdateTaskParams{
-		Title:         nullString(patch.Title),
-		DescriptionMd: nullString(patch.DescriptionMD),
-		Status:        nullString(patch.Status),
-		Priority:      nullInt(patch.Priority),
-		DueAt:         nullableTimeToString(patch.DueAt),
-		ColumnID:      nullString(patch.ColumnID),
-		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
-		ID:            taskID,
-	}
-	if patch.Labels != nil {
-		arg.LabelsJSON = sql.NullString{String: marshalLabels(*patch.Labels), Valid: true}
-	}
-	if err := qtx.UpdateTask(ctx, arg); err != nil {
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		arg := sqlc.UpdateTaskParams{
+			Title:         nullString(patch.Title),
+			DescriptionMd: nullString(patch.DescriptionMD),
+			Status:        nullString(patch.Status),
+			Priority:      nullInt(patch.Priority),
+			DueAt:         nullableTimeToString(patch.DueAt),
+			ColumnID:      nullString(patch.ColumnID),
+			UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+			ID:            taskID,
+		}
+		if patch.Labels != nil {
+			arg.LabelsJSON = sql.NullString{String: marshalLabels(*patch.Labels), Valid: true}
+		}
+		return qtx.UpdateTask(ctx, arg)
+	}); err != nil {
 		return fmt.Errorf("update task: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit update task: %w", err)
 	}
 	return nil
 }
@@ -132,27 +115,17 @@ func (r *TaskRepository) List(ctx context.Context, filter domain.TaskFilter) ([]
 }
 
 func (r *TaskRepository) Move(ctx context.Context, input domain.MoveTaskInput) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx for move task: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	qtx := r.queries.WithTx(tx)
-	err = qtx.MoveTask(ctx, sqlc.MoveTaskParams{
-		ColumnID:  nullString(input.ColumnID),
-		Status:    nullString(input.Status),
-		Position:  input.Position,
-		UpdatedAt: input.UpdatedAt.UTC().Format(time.RFC3339),
-		ID:        input.TaskID,
-	})
-	if err != nil {
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		return qtx.MoveTask(ctx, sqlc.MoveTaskParams{
+			ColumnID:  nullString(input.ColumnID),
+			Status:    nullString(input.Status),
+			Position:  input.Position,
+			UpdatedAt: input.UpdatedAt.UTC().Format(time.RFC3339),
+			ID:        input.TaskID,
+		})
+	}); err != nil {
 		return fmt.Errorf("move task: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit move task: %w", err)
 	}
 	return nil
 }

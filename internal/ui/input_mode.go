@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -161,25 +162,66 @@ func (m Model) confirmInputMode() (tea.Model, tea.Cmd, bool) {
 }
 
 // updateInputModeWidgets routes non-consumed messages to the active input widget.
+// updateTaskForm routes messages to the task form key handler or widget updater.
+func (m Model) updateTaskForm(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		if model, cmd, handled := m.handleTaskFormKey(keyMsg); handled {
+			return model, cmd
+		}
+	}
+	return m.updateTaskFormWidgets(msg)
+}
+
+// updateTaskFormWidgets routes non-consumed messages to the active task form field.
+func (m Model) updateTaskFormWidgets(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.taskForm == nil {
+		return m, nil
+	}
+	if field := m.taskForm.currentInputField(); field != nil {
+		prevDescription := m.taskForm.description.Value()
+		var cmd tea.Cmd
+		*field, cmd = field.Update(msg)
+		if m.taskForm.focus == taskFieldDescription && m.taskForm.description.Value() != prevDescription {
+			m.taskForm.descriptionFull = m.taskForm.description.Value()
+		}
+		return m, cmd
+	}
+	return m, nil
+}
+
+func (m Model) updateInputMode(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case descriptionEditedMsg:
+		if model, cmd, handled := m.handleDescriptionEditedMsg(msg); handled {
+			return model, cmd
+		}
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, m.keys.Cancel):
+			return m.cancelInputMode()
+		case m.inputMode == inputTaskForm:
+			return m.updateTaskForm(msg)
+		case msg.String() == "ctrl+s" && m.inputMode == inputEditDescription:
+			return m.saveEditDescription()
+		case key.Matches(msg, m.keys.Confirm) && m.inputMode != inputEditDescription:
+			if model, cmd, handled := m.confirmInputMode(); handled {
+				return model, cmd
+			}
+		}
+	}
+
+	if m.inputMode == inputTaskForm {
+		return m.updateTaskForm(msg)
+	}
+	return m.updateInputModeWidgets(msg)
+}
+
 func (m Model) updateInputModeWidgets(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.inputMode {
 	case inputEditDescription:
 		var cmd tea.Cmd
 		m.textArea, cmd = m.textArea.Update(msg)
 		return m, cmd
-	case inputTaskForm:
-		if m.taskForm != nil {
-			if field := m.taskForm.currentInputField(); field != nil {
-				prevDescription := m.taskForm.description.Value()
-				var cmd tea.Cmd
-				*field, cmd = field.Update(msg)
-				if m.taskForm.focus == taskFieldDescription && m.taskForm.description.Value() != prevDescription {
-					m.taskForm.descriptionFull = m.taskForm.description.Value()
-				}
-				return m, cmd
-			}
-		}
-		return m, nil
 	default:
 		var cmd tea.Cmd
 		m.textInput, cmd = m.textInput.Update(msg)

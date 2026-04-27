@@ -856,35 +856,17 @@ func TestUpdateInputModeWidgets_EditDescription(t *testing.T) {
 	}
 }
 
-func TestUpdateInputModeWidgets_TaskForm(t *testing.T) {
+func TestUpdateTaskFormWidgets_RoutesToTitle(t *testing.T) {
 	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
 	m.taskForm.title = textinput.New()
 	m.taskForm.title.Focus()
 	m.taskForm.focus = taskFieldTitle
 
-	model, cmd := m.updateInputModeWidgets(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model, cmd := m.updateTaskFormWidgets(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	updated := model.(Model)
 
 	if updated.taskForm.title.Value() != "x" {
 		t.Errorf("title = %q, want %q", updated.taskForm.title.Value(), "x")
-	}
-	if cmd == nil {
-		t.Error("expected non-nil cmd")
-	}
-}
-
-func TestUpdateInputModeWidgets_TaskFormDescriptionSync(t *testing.T) {
-	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
-	m.taskForm.description = textinput.New()
-	m.taskForm.description.Focus()
-	m.taskForm.focus = taskFieldDescription
-	m.taskForm.descriptionFull = "old"
-
-	model, cmd := m.updateInputModeWidgets(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
-	updated := model.(Model)
-
-	if updated.taskForm.descriptionFull != "n" {
-		t.Errorf("descriptionFull = %q, want %q", updated.taskForm.descriptionFull, "n")
 	}
 	if cmd == nil {
 		t.Error("expected non-nil cmd")
@@ -1051,5 +1033,318 @@ func TestUpdateEditDescriptionKeyRoutesToTextArea(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Error("expected non-nil cmd")
+	}
+}
+
+// --- updateTaskForm tests ---
+
+func TestUpdateTaskForm_HandledKey(t *testing.T) {
+	m := Model{
+		keys:         newKeyMap(),
+		overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
+	m.taskForm.title = textinput.New()
+	m.taskForm.description = textinput.New()
+	m.taskForm.dueDate = textinput.New()
+	m.taskForm.title.Focus()
+	m.taskForm.focus = taskFieldTitle
+
+	// Tab should be handled by handleTaskFormKey (moves focus)
+	newM, cmd := m.updateTaskForm(tea.KeyMsg{Type: tea.KeyTab})
+	updated := newM.(Model)
+
+	if updated.taskForm.focus != taskFieldDescription {
+		t.Errorf("focus = %d, want taskFieldDescription", updated.taskForm.focus)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd")
+	}
+}
+
+func TestUpdateTaskForm_UnhandledKeyRoutesToWidgets(t *testing.T) {
+	m := Model{
+		keys:         newKeyMap(),
+		overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
+	m.taskForm.title = textinput.New()
+	m.taskForm.title.Focus()
+	m.taskForm.focus = taskFieldTitle
+
+	newM, cmd := m.updateTaskForm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	updated := newM.(Model)
+
+	if updated.taskForm.title.Value() != "a" {
+		t.Errorf("title = %q, want %q", updated.taskForm.title.Value(), "a")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd")
+	}
+}
+
+func TestUpdateTaskForm_NonKeyMsgRoutesToWidgets(t *testing.T) {
+	m := Model{
+		keys:         newKeyMap(),
+		overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
+	m.taskForm.title = textinput.New()
+	m.taskForm.title.Focus()
+	m.taskForm.focus = taskFieldTitle
+
+	newM, cmd := m.updateTaskForm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	updated := newM.(Model)
+
+	if updated.taskForm.title.Value() != "b" {
+		t.Errorf("title = %q, want %q", updated.taskForm.title.Value(), "b")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd")
+	}
+}
+
+// --- updateTaskFormWidgets tests ---
+
+func TestUpdateTaskFormWidgets_UpdatesActiveField(t *testing.T) {
+	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
+	m.taskForm.title = textinput.New()
+	m.taskForm.title.Focus()
+	m.taskForm.focus = taskFieldTitle
+
+	model, cmd := m.updateTaskFormWidgets(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	updated := model.(Model)
+
+	if updated.taskForm.title.Value() != "x" {
+		t.Errorf("title = %q, want %q", updated.taskForm.title.Value(), "x")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd")
+	}
+}
+
+func TestUpdateTaskFormWidgets_SyncsDescriptionFull(t *testing.T) {
+	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
+	m.taskForm.description = textinput.New()
+	m.taskForm.description.Focus()
+	m.taskForm.focus = taskFieldDescription
+	m.taskForm.descriptionFull = "old"
+
+	model, cmd := m.updateTaskFormWidgets(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	updated := model.(Model)
+
+	if updated.taskForm.descriptionFull != "n" {
+		t.Errorf("descriptionFull = %q, want %q", updated.taskForm.descriptionFull, "n")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd")
+	}
+}
+
+func TestUpdateTaskFormWidgets_NoForm(t *testing.T) {
+	m := Model{overlayState: overlayState{inputMode: inputTaskForm}}
+
+	model, cmd := m.updateTaskFormWidgets(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	updated := model.(Model)
+
+	if updated.taskForm != nil {
+		t.Error("expected nil taskForm")
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd")
+	}
+}
+
+func TestUpdateTaskFormWidgets_NoField(t *testing.T) {
+	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
+	m.taskForm.focus = taskFieldPriority
+
+	model, cmd := m.updateTaskFormWidgets(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	updated := model.(Model)
+
+	if updated.taskForm.focus != taskFieldPriority {
+		t.Errorf("focus = %d, want taskFieldPriority", updated.taskForm.focus)
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd")
+	}
+}
+
+// --- task form lifecycle tests ---
+
+func TestCloseTaskForm(t *testing.T) {
+	m := Model{
+		overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}},
+		statusLine:   "Create task",
+	}
+
+	m.closeTaskForm()
+
+	if m.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", m.inputMode)
+	}
+	if m.taskForm != nil {
+		t.Error("expected taskForm to be nil")
+	}
+	if m.statusLine != "" {
+		t.Errorf("statusLine = %q, want empty", m.statusLine)
+	}
+}
+
+func TestStartCreateTaskForm(t *testing.T) {
+	m := Model{
+		viewMode: viewList,
+		columns: []domain.Column{
+			{ID: "c1", Name: "Todo", Color: "#ff0000"},
+		},
+	}
+	m.textInput = textinput.New()
+
+	m.startCreateTaskForm()
+
+	if m.inputMode != inputTaskForm {
+		t.Errorf("inputMode = %v, want inputTaskForm", m.inputMode)
+	}
+	if m.taskForm == nil {
+		t.Fatal("expected taskForm to be non-nil")
+	}
+	if m.taskForm.mode != taskFormCreate {
+		t.Errorf("mode = %v, want taskFormCreate", m.taskForm.mode)
+	}
+	if m.statusLine != "Create task" {
+		t.Errorf("statusLine = %q, want %q", m.statusLine, "Create task")
+	}
+	if m.taskForm.title.Placeholder != "Title" {
+		t.Errorf("title placeholder = %q, want %q", m.taskForm.title.Placeholder, "Title")
+	}
+}
+
+func TestStartEditTaskForm(t *testing.T) {
+	m := Model{
+		viewMode: viewList,
+		columns: []domain.Column{
+			{ID: "c1", Name: "Todo", Color: "#ff0000"},
+		},
+	}
+	m.textInput = textinput.New()
+
+	task := domain.Task{
+		ID:       "t1",
+		Title:    "Test Task",
+		Priority: 2,
+	}
+	m.startEditTaskForm(task)
+
+	if m.inputMode != inputTaskForm {
+		t.Errorf("inputMode = %v, want inputTaskForm", m.inputMode)
+	}
+	if m.taskForm == nil {
+		t.Fatal("expected taskForm to be non-nil")
+	}
+	if m.taskForm.mode != taskFormEdit {
+		t.Errorf("mode = %v, want taskFormEdit", m.taskForm.mode)
+	}
+	if m.taskForm.taskID != "t1" {
+		t.Errorf("taskID = %q, want %q", m.taskForm.taskID, "t1")
+	}
+	if m.statusLine != "Edit task" {
+		t.Errorf("statusLine = %q, want %q", m.statusLine, "Edit task")
+	}
+}
+
+func TestHandleTaskFormKey_TabMovesFocus(t *testing.T) {
+	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
+	m.taskForm.title = textinput.New()
+	m.taskForm.description = textinput.New()
+	m.taskForm.dueDate = textinput.New()
+	m.taskForm.title.Focus()
+	m.taskForm.focus = taskFieldTitle
+
+	model, cmd, handled := m.handleTaskFormKey(tea.KeyMsg{Type: tea.KeyTab})
+	updated := model.(Model)
+
+	if !handled {
+		t.Error("expected handled")
+	}
+	if updated.taskForm.focus != taskFieldDescription {
+		t.Errorf("focus = %d, want taskFieldDescription", updated.taskForm.focus)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd")
+	}
+}
+
+func TestHandleTaskFormKey_EscNotHandled(t *testing.T) {
+	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
+	m.taskForm.title = textinput.New()
+	m.taskForm.description = textinput.New()
+	m.taskForm.dueDate = textinput.New()
+	m.taskForm.title.Focus()
+	m.taskForm.focus = taskFieldTitle
+
+	_, _, handled := m.handleTaskFormKey(tea.KeyMsg{Type: tea.KeyEscape})
+	if handled {
+		t.Error("expected not handled")
+	}
+}
+
+func TestSubmitTaskForm_NilForm(t *testing.T) {
+	m := Model{overlayState: overlayState{inputMode: inputTaskForm}}
+
+	model, cmd := m.submitTaskForm()
+	updated := model.(Model)
+
+	if updated.inputMode != inputTaskForm {
+		t.Errorf("inputMode = %v, want inputTaskForm", updated.inputMode)
+	}
+	if updated.statusLine == "" {
+		t.Error("expected statusLine to be set")
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd")
+	}
+}
+
+func TestSubmitTaskFormCmd_EmptyTitle(t *testing.T) {
+	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
+	m.taskForm.title = textinput.New()
+	m.taskForm.title.SetValue("")
+
+	_, err := m.submitTaskFormCmd()
+	if err == nil {
+		t.Error("expected error for empty title")
+	}
+}
+
+func TestBuildTaskStatusOptions_NoTask(t *testing.T) {
+	m := Model{
+		columns: []domain.Column{
+			{ID: "c1", Name: "Todo", Color: "#ff0000"},
+			{ID: "c2", Name: "Done", Color: "#00ff00"},
+		},
+	}
+
+	options, selected := m.buildTaskStatusOptions(nil)
+	if len(options) != 2 {
+		t.Errorf("len(options) = %d, want 2", len(options))
+	}
+	if selected != 0 {
+		t.Errorf("selected = %d, want 0", selected)
+	}
+	if options[0].Label != "Todo" {
+		t.Errorf("options[0].Label = %q, want %q", options[0].Label, "Todo")
+	}
+}
+
+func TestBuildTaskStatusOptions_WithTask(t *testing.T) {
+	m := Model{
+		columns: []domain.Column{
+			{ID: "c1", Name: "Todo", Color: "#ff0000"},
+			{ID: "c2", Name: "Done", Color: "#00ff00"},
+		},
+	}
+	colID := "c2"
+	task := domain.Task{ColumnID: &colID}
+
+	options, selected := m.buildTaskStatusOptions(&task)
+	if len(options) != 3 { // (none) + 2 columns
+		t.Errorf("len(options) = %d, want 3", len(options))
+	}
+	if selected != 2 {
+		t.Errorf("selected = %d, want 2", selected)
 	}
 }
