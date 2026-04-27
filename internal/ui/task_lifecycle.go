@@ -1,6 +1,10 @@
 package ui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 // handleTasksLoaded processes a tasksLoadedMsg, updating tasks with active filters and sort.
 // When restoreKanban is true, it attempts to restore pending kanban selection before
@@ -71,12 +75,12 @@ func (m Model) handleOpResult(msg opResultMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.statusLine = ""
-	if m.viewMode == viewKanban && msg.taskID != "" && msg.columnID != "" {
+	if m.viewMode == viewKanban && strings.TrimSpace(msg.taskID) != "" && strings.TrimSpace(msg.columnID) != "" {
 		m.pendingKanbanTaskID = msg.taskID
 		m.pendingKanbanColumnID = msg.columnID
 		m.setActiveColumnByID(msg.columnID)
 	}
-	if m.returnTaskView && m.returnTaskID != "" {
+	if m.returnTaskView && strings.TrimSpace(m.returnTaskID) != "" {
 		taskID := m.returnTaskID
 		m.clearTaskViewerReturn()
 		commentsCmd := m.openTaskViewerByID(taskID)

@@ -236,6 +236,33 @@ func TestSetupRepository_RenameWorkspace_Validation(t *testing.T) {
 	}
 }
 
+func TestSetupRepository_RenameWorkspace_ErrorContext(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID := seedProvider(t, ctx, q)
+	if err := q.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+		ID:         "w-rename-err",
+		ProviderID: providerID,
+		Name:       "Old Name",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	repo := NewSetupRepository(store.New(adapter))
+	if err := repo.RenameWorkspace(ctx, "w-rename-err", "New Name"); err != nil {
+		t.Fatalf("rename workspace: %v", err)
+	}
+
+	got, err := repo.ListWorkspaces(ctx)
+	if err != nil {
+		t.Fatalf("list workspaces: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "New Name" {
+		t.Errorf("Name = %q, want %q", got[0].Name, "New Name")
+	}
+}
+
 func TestSetupRepository_CreateBoard(t *testing.T) {
 	adapter := newTestAdapter(t)
 	ctx := context.Background()
@@ -398,6 +425,41 @@ func TestSetupRepository_RenameBoard_Validation(t *testing.T) {
 	}
 	if err := repo.RenameBoard(ctx, "id", ""); err == nil {
 		t.Error("expected error for empty name, got nil")
+	}
+}
+
+func TestSetupRepository_RenameBoard_ErrorContext(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID := seedProvider(t, ctx, q)
+	if err := q.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+		ID:         "w-rename-board-err",
+		ProviderID: providerID,
+		Name:       "Workspace",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          "b-rename-err",
+		WorkspaceID: "w-rename-board-err",
+		Name:        "Old Name",
+		ViewDefault: "list",
+	}); err != nil {
+		t.Fatalf("create board: %v", err)
+	}
+
+	repo := NewSetupRepository(store.New(adapter))
+	if err := repo.RenameBoard(ctx, "b-rename-err", "New Name"); err != nil {
+		t.Fatalf("rename board: %v", err)
+	}
+
+	got, err := repo.ListBoards(ctx, "w-rename-board-err")
+	if err != nil {
+		t.Fatalf("list boards: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "New Name" {
+		t.Errorf("Name = %q, want %q", got[0].Name, "New Name")
 	}
 }
 
@@ -615,6 +677,126 @@ func TestSetupRepository_ReorderColumns_Validation(t *testing.T) {
 	}
 	if err := repo.ReorderColumns(ctx, "b1", []string{}); err == nil {
 		t.Error("expected error for empty column ids, got nil")
+	}
+}
+
+func TestSetupRepository_ReorderColumns_ErrorContext(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID := seedProvider(t, ctx, q)
+	if err := q.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+		ID:         "w-reorder-err-ctx",
+		ProviderID: providerID,
+		Name:       "Workspace",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          "b-reorder-err-ctx",
+		WorkspaceID: "w-reorder-err-ctx",
+		Name:        "Board",
+		ViewDefault: "kanban",
+	}); err != nil {
+		t.Fatalf("create board: %v", err)
+	}
+	for _, c := range []struct {
+		id       string
+		position int64
+	}{
+		{"c-reorder-err-1", 1},
+		{"c-reorder-err-2", 2},
+	} {
+		if err := q.CreateColumn(ctx, sqlc.CreateColumnParams{
+			ID:       c.id,
+			BoardID:  "b-reorder-err-ctx",
+			Name:     c.id,
+			Color:    "#6B7280",
+			Position: c.position,
+		}); err != nil {
+			t.Fatalf("create column %s: %v", c.id, err)
+		}
+	}
+
+	repo := NewSetupRepository(store.New(adapter))
+	if err := repo.ReorderColumns(ctx, "b-reorder-err-ctx", []string{"c-reorder-err-2", "c-reorder-err-1"}); err != nil {
+		t.Fatalf("reorder columns: %v", err)
+	}
+
+	got, err := repo.ListColumns(ctx, "b-reorder-err-ctx")
+	if err != nil {
+		t.Fatalf("list columns: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(columns) = %d, want 2", len(got))
+	}
+	if got[0].ID != "c-reorder-err-2" || got[0].Position != 1 {
+		t.Errorf("first: ID=%q position=%d, want c-reorder-err-2/1", got[0].ID, got[0].Position)
+	}
+	if got[1].ID != "c-reorder-err-1" || got[1].Position != 2 {
+		t.Errorf("second: ID=%q position=%d, want c-reorder-err-1/2", got[1].ID, got[1].Position)
+	}
+}
+
+func TestSetupRepository_RenameWorkspace_NotFound(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewSetupRepository(store.New(adapter))
+
+	// Renaming a non-existent workspace returns nil because UpdateWorkspaceName uses :exec
+	if err := repo.RenameWorkspace(ctx, "missing-ws", "New Name"); err != nil {
+		t.Fatalf("rename non-existent workspace: %v", err)
+	}
+}
+
+func TestSetupRepository_RenameBoard_NotFound(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewSetupRepository(store.New(adapter))
+
+	// Renaming a non-existent board returns nil because UpdateBoardName uses :exec
+	if err := repo.RenameBoard(ctx, "missing-board", "New Name"); err != nil {
+		t.Fatalf("rename non-existent board: %v", err)
+	}
+}
+
+func TestSetupRepository_ReorderColumns_EmptyIDInSlice(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID := seedProvider(t, ctx, q)
+	if err := q.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+		ID:         "w-reorder-empty",
+		ProviderID: providerID,
+		Name:       "Workspace",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          "b-reorder-empty",
+		WorkspaceID: "w-reorder-empty",
+		Name:        "Board",
+		ViewDefault: "kanban",
+	}); err != nil {
+		t.Fatalf("create board: %v", err)
+	}
+	if err := q.CreateColumn(ctx, sqlc.CreateColumnParams{
+		ID:       "c-reorder-empty",
+		BoardID:  "b-reorder-empty",
+		Name:     "Column",
+		Color:    "#6B7280",
+		Position: 1,
+	}); err != nil {
+		t.Fatalf("create column: %v", err)
+	}
+
+	repo := NewSetupRepository(store.New(adapter))
+	err := repo.ReorderColumns(ctx, "b-reorder-empty", []string{"c-reorder-empty", "", "c-reorder-empty"})
+	if err == nil {
+		t.Fatal("expected error for empty column id in slice, got nil")
+	}
+	if !strings.Contains(err.Error(), "column id at position 2 is empty") {
+		t.Errorf("error = %q, want 'column id at position 2 is empty'", err.Error())
 	}
 }
 

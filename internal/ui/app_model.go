@@ -305,19 +305,9 @@ type opResultMsg struct {
 	columnID string
 }
 
-type executeActionMsg struct {
-	action string
-}
-
 type descriptionEditedMsg struct {
 	content string
 	err     error
-}
-
-type keybindEntry struct {
-	ID    string
-	Key   string
-	Label string
 }
 
 type Model struct {
@@ -470,31 +460,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case executeActionMsg:
 		return m.executeAction(msg.action)
 	case tasksLoadedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = msg.err.Error()
-			return m, nil
-		}
-		m.tasks = m.applyActiveFilters(msg.tasks)
-		m.sortTasks(m.tasks)
-		if !m.restorePendingKanbanSelection() {
-			m.ensureSelection()
-		}
-		if m.showDetails {
-			if task, ok := m.currentTask(); ok {
-				return m, m.loadCommentsCmd(task.ID)
-			}
-		}
-		m.comments = nil
-		return m, nil
+		return m.handleTasksLoaded(msg, true, true)
 	case commentsLoadedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = msg.err.Error()
-			return m, nil
-		}
-		m.comments = msg.comments
-		return m, nil
+		return m.handleCommentsLoaded(msg)
 	case descriptionEditedMsg:
 		if m.editingDescTask == "" {
 			return m, nil
@@ -508,25 +476,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.updateTaskDescriptionCmd(taskID, msg.content)
 	case opResultMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = msg.err.Error()
-			m.clearTaskViewerReturn()
-			return m, nil
-		}
-		m.statusLine = ""
-		if m.viewMode == viewKanban && strings.TrimSpace(msg.taskID) != "" && strings.TrimSpace(msg.columnID) != "" {
-			m.pendingKanbanTaskID = msg.taskID
-			m.pendingKanbanColumnID = msg.columnID
-			m.setActiveColumnByID(msg.columnID)
-		}
-		if m.returnTaskView && strings.TrimSpace(m.returnTaskID) != "" {
-			taskID := m.returnTaskID
-			m.clearTaskViewerReturn()
-			commentsCmd := m.openTaskViewerByID(taskID)
-			return m, tea.Batch(m.loadTasksCmd(), commentsCmd)
-		}
-		return m, m.loadTasksCmd()
+		return m.handleOpResult(msg)
 	case tea.KeyMsg:
 		if m.confirmingDelete {
 			if msg.String() == "y" {
@@ -542,167 +492,60 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch {
 		case key.Matches(msg, m.keys.Quit):
-			return m, tea.Quit
+			return m.executeAction("quit")
 		case key.Matches(msg, m.keys.ShowKeybinds):
 			m.openKeybindPanel()
 			return m, textinput.Blink
 		case key.Matches(msg, m.keys.ShowFilters):
-			m.openFilterPanel()
-			return m, nil
+			return m.executeAction("open_filters")
 		case key.Matches(msg, m.keys.OpenWorkspace):
-			m.openContextPanel(contextWorkspace)
-			return m, textinput.Blink
+			return m.executeAction("open_workspaces")
 		case key.Matches(msg, m.keys.OpenBoardPanel):
-			m.openContextPanel(contextBoard)
-			return m, textinput.Blink
+			return m.executeAction("open_board_panel")
 		case key.Matches(msg, m.keys.PrevBoard):
-			changed, err := m.switchBoardByOffset(-1)
-			if err != nil {
-				m.statusLine = err.Error()
-				return m, nil
-			}
-			if changed {
-				return m, m.loadTasksCmd()
-			}
-			return m, nil
+			return m.executeAction("prev_board")
 		case key.Matches(msg, m.keys.NextBoard):
-			changed, err := m.switchBoardByOffset(1)
-			if err != nil {
-				m.statusLine = err.Error()
-				return m, nil
-			}
-			if changed {
-				return m, m.loadTasksCmd()
-			}
-			return m, nil
+			return m.executeAction("next_board")
 		case key.Matches(msg, m.keys.ToggleView):
-			if m.viewMode == viewList {
-				m.viewMode = viewKanban
-			} else {
-				m.viewMode = viewList
-			}
-			m.ensureSelection()
-			if m.showDetails {
-				if task, ok := m.currentTask(); ok {
-					return m, m.loadCommentsCmd(task.ID)
-				}
-			}
-			return m, nil
+			return m.executeAction("toggle_view")
 		case key.Matches(msg, m.keys.ToggleDetails):
-			m.showDetails = !m.showDetails
-			if m.showDetails {
-				if task, ok := m.currentTask(); ok {
-					return m, m.loadCommentsCmd(task.ID)
-				}
-			}
-			return m, nil
+			return m.executeAction("toggle_details")
 		case key.Matches(msg, m.keys.Search):
-			return m, m.startSearch()
+			return m.executeAction("search")
 		case key.Matches(msg, m.keys.ClearSearch):
-			if strings.TrimSpace(m.titleFilter) == "" {
-				return m, nil
-			}
-			m.titleFilter = ""
-			m.statusLine = ""
-			return m, m.loadTasksCmd()
+			return m.executeAction("clear_search")
 		case key.Matches(msg, m.keys.NewTask):
-			return m.enterCreateTaskForm()
+			return m.executeAction("new_task")
 		case key.Matches(msg, m.keys.EditTitle):
-			task, ok := m.currentTask()
-			if !ok {
-				return m, nil
-			}
-			return m.enterEditTaskForm(task)
+			return m.executeAction("edit_task")
 		case key.Matches(msg, m.keys.AddComment):
-			if _, ok := m.currentTask(); !ok {
-				return m, nil
-			}
-			return m, m.startAddComment()
+			return m.executeAction("add_comment")
 		case key.Matches(msg, m.keys.EditDescription):
-			task, ok := m.currentTask()
-			if !ok {
-				return m, nil
-			}
-			return m, m.startExternalDescriptionEdit(task)
+			return m.executeAction("edit_description")
 		case key.Matches(msg, m.keys.CycleStatus):
-			m.cycleColumnFilter()
-			return m, m.loadTasksCmd()
+			return m.executeAction("cycle_status")
 		case key.Matches(msg, m.keys.ToggleDueSoon):
-			m.cycleDueFilter()
-			return m, m.loadTasksCmd()
+			return m.executeAction("cycle_due_filter")
 		case key.Matches(msg, m.keys.CycleSort):
-			m.cycleSortMode()
-			return m, m.loadTasksCmd()
+			return m.executeAction("cycle_sort")
 		case key.Matches(msg, m.keys.Up):
-			m.moveUp()
-			if m.showDetails {
-				if task, ok := m.currentTask(); ok {
-					return m, m.loadCommentsCmd(task.ID)
-				}
-			}
-			return m, nil
+			return m.executeAction("move_up")
 		case key.Matches(msg, m.keys.Down):
-			m.moveDown()
-			if m.showDetails {
-				if task, ok := m.currentTask(); ok {
-					return m, m.loadCommentsCmd(task.ID)
-				}
-			}
-			return m, nil
+			return m.executeAction("move_down")
 		case key.Matches(msg, m.keys.KanbanMoveTaskLeft):
-			if m.viewMode == viewKanban {
-				if task, ok := m.currentTask(); ok {
-					return m, m.moveToPrevColumnCmd(task)
-				}
-			}
-			return m, nil
+			return m.executeAction("move_task_left")
 		case key.Matches(msg, m.keys.Left):
-			if m.viewMode == viewKanban {
-				if m.activeColumn > 0 {
-					m.activeColumn--
-				}
-				m.ensureKanbanRow()
-				if m.showDetails {
-					if task, ok := m.currentTask(); ok {
-						return m, m.loadCommentsCmd(task.ID)
-					}
-				}
-			}
-			return m, nil
+			return m.executeAction("move_left")
 		case key.Matches(msg, m.keys.KanbanMoveTaskRight):
-			if m.viewMode == viewKanban {
-				if task, ok := m.currentTask(); ok {
-					return m, m.moveToNextColumnCmd(task)
-				}
-			}
-			return m, nil
+			return m.executeAction("move_task_right")
 		case key.Matches(msg, m.keys.Right):
-			if m.viewMode == viewKanban {
-				if m.activeColumn < len(m.columns)-1 {
-					m.activeColumn++
-				}
-				m.ensureKanbanRow()
-				if m.showDetails {
-					if task, ok := m.currentTask(); ok {
-						return m, m.loadCommentsCmd(task.ID)
-					}
-				}
-			}
-			return m, nil
+			return m.executeAction("move_right")
 		case key.Matches(msg, m.keys.OpenDetails):
-			return m, m.openTaskViewer()
+			return m.executeAction("open_move")
 		case key.Matches(msg, m.keys.MoveTask):
-			if task, ok := m.currentTask(); ok {
-				return m, m.moveToNextColumnCmd(task)
-			}
-			return m, nil
+			return m.executeAction("move_task")
 		case key.Matches(msg, m.keys.MoveTaskLeft):
-			if m.viewMode == viewKanban {
-				if task, ok := m.currentTask(); ok {
-					return m, m.moveToPrevColumnCmd(task)
-				}
-			}
-			return m, nil
+			return m.executeAction("move_task_left")
 		case key.Matches(msg, m.keys.DeleteTask):
 			if m.viewMode == viewKanban {
 				if _, ok := m.currentTask(); ok {
@@ -1349,29 +1192,9 @@ func (m *Model) submitContextEdit() error {
 func (m Model) updateContextPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tasksLoadedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = msg.err.Error()
-			return m, nil
-		}
-		m.tasks = m.applyActiveFilters(msg.tasks)
-		m.sortTasks(m.tasks)
-		m.ensureSelection()
-		if m.showDetails {
-			if task, ok := m.currentTask(); ok {
-				return m, m.loadCommentsCmd(task.ID)
-			}
-		}
-		m.comments = nil
-		return m, nil
+		return m.handleTasksLoaded(msg, false, true)
 	case commentsLoadedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = msg.err.Error()
-			return m, nil
-		}
-		m.comments = msg.comments
-		return m, nil
+		return m.handleCommentsLoaded(msg)
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -1957,29 +1780,9 @@ func (m *Model) adjustFilterSelection(delta int) (bool, error) {
 func (m Model) updateFilterPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tasksLoadedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = msg.err.Error()
-			return m, nil
-		}
-		m.tasks = m.applyActiveFilters(msg.tasks)
-		m.sortTasks(m.tasks)
-		m.ensureSelection()
-		if m.showDetails {
-			if task, ok := m.currentTask(); ok {
-				return m, m.loadCommentsCmd(task.ID)
-			}
-		}
-		m.comments = nil
-		return m, nil
+		return m.handleTasksLoaded(msg, false, true)
 	case commentsLoadedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = msg.err.Error()
-			return m, nil
-		}
-		m.comments = msg.comments
-		return m, nil
+		return m.handleCommentsLoaded(msg)
 	case opResultMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -2082,55 +1885,6 @@ func (m Model) renderFilterPanel(base string) string {
 		Render(strings.Join(lines, "\n"))
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
-}
-
-func (m Model) keybindEntries() []keybindEntry {
-	entries := []keybindEntry{
-		{ID: "new_task", Key: "n", Label: "Create task"},
-		{ID: "edit_task", Key: "e", Label: "Edit selected task"},
-		{ID: "edit_description", Key: "E", Label: "Edit description"},
-		{ID: "add_comment", Key: "c", Label: "Add comment"},
-		{ID: "search", Key: "/", Label: "Search"},
-		{ID: "open_filters", Key: "f", Label: "Open filter/sort panel"},
-		{ID: "open_workspaces", Key: "w", Label: "Open workspace switcher"},
-		{ID: "open_board_panel", Key: "b", Label: "Open board manager"},
-		{ID: "prev_board", Key: "[", Label: "Previous board"},
-		{ID: "next_board", Key: "]", Label: "Next board"},
-		{ID: "toggle_details", Key: "d", Label: "Toggle details pane"},
-		{ID: "open_move", Key: "Enter", Label: "Open task viewer"},
-		{ID: "move_task", Key: "m", Label: "Move task to next status"},
-		{ID: "toggle_view", Key: "Tab", Label: "Switch list/kanban"},
-		{ID: "cycle_status", Key: "s", Label: "Cycle status filter"},
-		{ID: "cycle_due_filter", Key: "z", Label: "Cycle due filter"},
-		{ID: "cycle_sort", Key: "o", Label: "Cycle sort mode"},
-		{ID: "move_up", Key: "↑", Label: "Move selection up"},
-		{ID: "move_down", Key: "↓", Label: "Move selection down"},
-		{ID: "move_left", Key: "←", Label: "Move selection left (kanban)"},
-		{ID: "move_right", Key: "→", Label: "Move selection right (kanban)"},
-		{ID: "move_task_left", Key: "Shift+←", Label: "Move card to left column (kanban)"},
-		{ID: "move_task_right", Key: "Shift+→", Label: "Move card to right column (kanban)"},
-		{ID: "quit", Key: "q", Label: "Quit"},
-	}
-	if strings.TrimSpace(m.titleFilter) != "" {
-		entries = append(entries, keybindEntry{ID: "clear_search", Key: "x", Label: "Clear search"})
-	}
-	return entries
-}
-
-func (m Model) filteredKeybindEntries() []keybindEntry {
-	query := strings.ToLower(strings.TrimSpace(m.keyFilter.Value()))
-	entries := m.keybindEntries()
-	if query == "" {
-		return entries
-	}
-
-	filtered := make([]keybindEntry, 0, len(entries))
-	for _, entry := range entries {
-		if strings.Contains(strings.ToLower(entry.Key), query) || strings.Contains(strings.ToLower(entry.Label), query) {
-			filtered = append(filtered, entry)
-		}
-	}
-	return filtered
 }
 
 func (m *Model) clampKeybindSelection() {
@@ -2252,165 +2006,6 @@ func (m Model) renderKeybindPanel(base string) string {
 		Render(strings.Join(lines, "\n"))
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
-}
-
-func (m Model) executeAction(action string) (tea.Model, tea.Cmd) {
-	switch action {
-	case "quit":
-		return m, tea.Quit
-	case "toggle_view":
-		if m.viewMode == viewList {
-			m.viewMode = viewKanban
-		} else {
-			m.viewMode = viewList
-		}
-		m.ensureSelection()
-		if m.showDetails {
-			if task, ok := m.currentTask(); ok {
-				return m, m.loadCommentsCmd(task.ID)
-			}
-		}
-		return m, nil
-	case "toggle_details":
-		m.showDetails = !m.showDetails
-		if m.showDetails {
-			if task, ok := m.currentTask(); ok {
-				return m, m.loadCommentsCmd(task.ID)
-			}
-		}
-		return m, nil
-	case "search":
-		return m, m.startSearch()
-	case "open_filters":
-		m.openFilterPanel()
-		return m, nil
-	case "open_workspaces":
-		m.openContextPanel(contextWorkspace)
-		return m, textinput.Blink
-	case "open_board_panel":
-		m.openContextPanel(contextBoard)
-		return m, textinput.Blink
-	case "prev_board":
-		changed, err := m.switchBoardByOffset(-1)
-		if err != nil {
-			m.statusLine = err.Error()
-			return m, nil
-		}
-		if changed {
-			return m, m.loadTasksCmd()
-		}
-		return m, nil
-	case "next_board":
-		changed, err := m.switchBoardByOffset(1)
-		if err != nil {
-			m.statusLine = err.Error()
-			return m, nil
-		}
-		if changed {
-			return m, m.loadTasksCmd()
-		}
-		return m, nil
-	case "clear_search":
-		if strings.TrimSpace(m.titleFilter) == "" {
-			return m, nil
-		}
-		m.titleFilter = ""
-		m.statusLine = ""
-		return m, m.loadTasksCmd()
-	case "new_task":
-		return m.enterCreateTaskForm()
-	case "edit_task":
-		task, ok := m.currentTask()
-		if !ok {
-			return m, nil
-		}
-		return m.enterEditTaskForm(task)
-	case "add_comment":
-		if _, ok := m.currentTask(); !ok {
-			return m, nil
-		}
-		return m, m.startAddComment()
-	case "edit_description":
-		task, ok := m.currentTask()
-		if !ok {
-			return m, nil
-		}
-		return m, m.startExternalDescriptionEdit(task)
-	case "cycle_status":
-		m.cycleColumnFilter()
-		return m, m.loadTasksCmd()
-	case "cycle_due_filter":
-		m.cycleDueFilter()
-		return m, m.loadTasksCmd()
-	case "cycle_sort":
-		m.cycleSortMode()
-		return m, m.loadTasksCmd()
-	case "move_up":
-		m.moveUp()
-		if m.showDetails {
-			if task, ok := m.currentTask(); ok {
-				return m, m.loadCommentsCmd(task.ID)
-			}
-		}
-		return m, nil
-	case "move_down":
-		m.moveDown()
-		if m.showDetails {
-			if task, ok := m.currentTask(); ok {
-				return m, m.loadCommentsCmd(task.ID)
-			}
-		}
-		return m, nil
-	case "move_left":
-		if m.viewMode == viewKanban {
-			if m.activeColumn > 0 {
-				m.activeColumn--
-			}
-			m.ensureKanbanRow()
-			if m.showDetails {
-				if task, ok := m.currentTask(); ok {
-					return m, m.loadCommentsCmd(task.ID)
-				}
-			}
-		}
-		return m, nil
-	case "move_right":
-		if m.viewMode == viewKanban {
-			if m.activeColumn < len(m.columns)-1 {
-				m.activeColumn++
-			}
-			m.ensureKanbanRow()
-			if m.showDetails {
-				if task, ok := m.currentTask(); ok {
-					return m, m.loadCommentsCmd(task.ID)
-				}
-			}
-		}
-		return m, nil
-	case "move_task_left":
-		if m.viewMode == viewKanban {
-			if task, ok := m.currentTask(); ok {
-				return m, m.moveToPrevColumnCmd(task)
-			}
-		}
-		return m, nil
-	case "move_task_right":
-		if m.viewMode == viewKanban {
-			if task, ok := m.currentTask(); ok {
-				return m, m.moveToNextColumnCmd(task)
-			}
-		}
-		return m, nil
-	case "open_move":
-		return m, m.openTaskViewer()
-	case "move_task":
-		if task, ok := m.currentTask(); ok {
-			return m, m.moveToNextColumnCmd(task)
-		}
-		return m, nil
-	default:
-		return m, nil
-	}
 }
 
 func (m Model) createTaskWithDetailsCmd(title, description string, priority int, dueAt *time.Time, boardID, columnID, status *string) tea.Cmd {

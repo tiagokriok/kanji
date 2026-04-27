@@ -539,3 +539,49 @@ func (q *Queries) ListComments(ctx context.Context, taskID string) ([]Comment, e
 	}
 	return items, nil
 }
+
+const updateWorkspaceName = `-- name: UpdateWorkspaceName :exec
+UPDATE workspaces SET name = ? WHERE id = ?
+`
+
+type UpdateWorkspaceNameParams struct {
+	Name string
+	ID   string
+}
+
+func (q *Queries) UpdateWorkspaceName(ctx context.Context, arg UpdateWorkspaceNameParams) error {
+	_, err := q.db.ExecContext(ctx, updateWorkspaceName, arg.Name, arg.ID)
+	return err
+}
+
+const updateBoardName = `-- name: UpdateBoardName :exec
+UPDATE boards SET name = ? WHERE id = ?
+`
+
+type UpdateBoardNameParams struct {
+	Name string
+	ID   string
+}
+
+func (q *Queries) UpdateBoardName(ctx context.Context, arg UpdateBoardNameParams) error {
+	_, err := q.db.ExecContext(ctx, updateBoardName, arg.Name, arg.ID)
+	return err
+}
+
+const updateColumnPosition = `-- name: UpdateColumnPosition :execrows
+UPDATE columns SET position = ? WHERE id = ? AND board_id = ?
+`
+
+type UpdateColumnPositionParams struct {
+	Position int64
+	ID       string
+	BoardID  string
+}
+
+func (q *Queries) UpdateColumnPosition(ctx context.Context, arg UpdateColumnPositionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateColumnPosition, arg.Position, arg.ID, arg.BoardID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

@@ -51,7 +51,3 @@ type txBound struct {
 func (t *txBound) Queries() *sqlc.Queries {
 	return t.queries
 }
-
-func (t *txBound) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return t.tx.ExecContext(ctx, query, args...)
-}

@@ -96,6 +96,34 @@ func TestKernel_Queries_ReturnsWorkingQueries(t *testing.T) {
 	}
 }
 
+func TestKernel_InTx_BeginTxError(t *testing.T) {
+	adapter := newTestAdapter(t)
+	s := New(adapter)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := s.InTx(ctx, func(tx Tx) error {
+		return tx.Queries().CreateProvider(ctx, sqlc.CreateProviderParams{
+			ID:        "p-begin-err",
+			Type:      "local",
+			Name:      "Should Not Exist",
+			CreatedAt: "2024-01-01T00:00:00Z",
+		})
+	})
+	if err == nil {
+		t.Fatal("expected error for canceled context, got nil")
+	}
+
+	items, err := adapter.Queries().ListProviders(context.Background())
+	if err != nil {
+		t.Fatalf("list providers: %v", err)
+	}
+	if _, ok := findProvider(items, "p-begin-err"); ok {
+		t.Fatal("expected provider p-begin-err to not exist")
+	}
+}
+
 func TestKernel_InTx_RollbacksOnError(t *testing.T) {
 	adapter := newTestAdapter(t)
 	s := New(adapter)

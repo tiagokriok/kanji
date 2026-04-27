@@ -11,6 +11,9 @@ ORDER BY created_at ASC;
 INSERT INTO workspaces (id, provider_id, remote_id, name)
 VALUES (?, ?, ?, ?);
 
+-- name: UpdateWorkspaceName :exec
+UPDATE workspaces SET name = ? WHERE id = ?;
+
 -- name: ListWorkspaces :many
 SELECT id, provider_id, remote_id, name
 FROM workspaces
@@ -19,6 +22,9 @@ ORDER BY name ASC;
 -- name: CreateBoard :exec
 INSERT INTO boards (id, workspace_id, remote_id, name, view_default)
 VALUES (?, ?, ?, ?, ?);
+
+-- name: UpdateBoardName :exec
+UPDATE boards SET name = ? WHERE id = ?;
 
 -- name: ListBoards :many
 SELECT id, workspace_id, remote_id, name, view_default
@@ -29,6 +35,9 @@ ORDER BY name ASC;
 -- name: CreateColumn :exec
 INSERT INTO columns (id, board_id, remote_id, name, color, position, wip_limit)
 VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- name: UpdateColumnPosition :execrows
+UPDATE columns SET position = ? WHERE id = ? AND board_id = ?;
 
 -- name: ListColumns :many
 SELECT id, board_id, remote_id, name, color, position, wip_limit

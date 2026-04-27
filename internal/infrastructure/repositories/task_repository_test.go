@@ -344,6 +344,267 @@ func TestTaskRepository_Delete(t *testing.T) {
 	}
 }
 
+func TestTaskRepository_List(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
+
+	repo := NewTaskRepository(store.New(adapter))
+	for i, title := range []string{"Alpha", "Beta", "Gamma"} {
+		task := domain.Task{
+			ID:          "t-list-" + title,
+			ProviderID:  providerID,
+			WorkspaceID: workspaceID,
+			BoardID:     &boardID,
+			ColumnID:    &columnID,
+			Title:       title,
+			Priority:    i,
+			Labels:      []string{},
+			Position:    float64(i + 1),
+			CreatedAt:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			UpdatedAt:   time.Date(2024, 1, int(1+i), 0, 0, 0, 0, time.UTC),
+		}
+		if err := repo.Create(ctx, task); err != nil {
+			t.Fatalf("create task %s: %v", title, err)
+		}
+	}
+
+	got, err := repo.List(ctx, domain.TaskFilter{WorkspaceID: workspaceID})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("len(tasks) = %d, want 3", len(got))
+	}
+	// Ordered by updated_at DESC
+	if got[0].Title != "Gamma" {
+		t.Errorf("first title = %q, want Gamma", got[0].Title)
+	}
+}
+
+func TestTaskRepository_List_FilterBoard(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
+
+	otherBoardID := "b-other"
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          otherBoardID,
+		WorkspaceID: workspaceID,
+		Name:        "Other Board",
+		ViewDefault: "list",
+	}); err != nil {
+		t.Fatalf("create other board: %v", err)
+	}
+
+	repo := NewTaskRepository(store.New(adapter))
+	for _, tc := range []struct {
+		id      string
+		boardID string
+		title   string
+	}{
+		{"t-fb-1", boardID, "In Board"},
+		{"t-fb-2", otherBoardID, "Other Board"},
+	} {
+		task := domain.Task{
+			ID:          tc.id,
+			ProviderID:  providerID,
+			WorkspaceID: workspaceID,
+			BoardID:     &tc.boardID,
+			ColumnID:    &columnID,
+			Title:       tc.title,
+			Priority:    0,
+			Labels:      []string{},
+			Position:    1,
+			CreatedAt:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			UpdatedAt:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		}
+		if err := repo.Create(ctx, task); err != nil {
+			t.Fatalf("create task %s: %v", tc.title, err)
+		}
+	}
+
+	got, err := repo.List(ctx, domain.TaskFilter{WorkspaceID: workspaceID, BoardID: boardID})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(got))
+	}
+	if got[0].Title != "In Board" {
+		t.Errorf("Title = %q, want In Board", got[0].Title)
+	}
+}
+
+func TestTaskRepository_List_FilterTitle(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
+
+	repo := NewTaskRepository(store.New(adapter))
+	for _, tc := range []struct {
+		id    string
+		title string
+	}{
+		{"t-ft-1", "Search Me"},
+		{"t-ft-2", "Another"},
+	} {
+		task := domain.Task{
+			ID:          tc.id,
+			ProviderID:  providerID,
+			WorkspaceID: workspaceID,
+			BoardID:     &boardID,
+			ColumnID:    &columnID,
+			Title:       tc.title,
+			Priority:    0,
+			Labels:      []string{},
+			Position:    1,
+			CreatedAt:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			UpdatedAt:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		}
+		if err := repo.Create(ctx, task); err != nil {
+			t.Fatalf("create task %s: %v", tc.title, err)
+		}
+	}
+
+	got, err := repo.List(ctx, domain.TaskFilter{WorkspaceID: workspaceID, TitleQuery: "search"})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(got))
+	}
+	if got[0].Title != "Search Me" {
+		t.Errorf("Title = %q, want Search Me", got[0].Title)
+	}
+}
+
+func TestTaskRepository_List_FilterDueSoon(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID, workspaceID, boardID, columnID := seedProviderWorkspaceBoardColumn(t, ctx, q)
+
+	repo := NewTaskRepository(store.New(adapter))
+	soon := time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)
+	later := time.Date(2024, 6, 20, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		id    string
+		title string
+		due   *time.Time
+	}{
+		{"t-fd-1", "Due Soon", &soon},
+		{"t-fd-2", "Later", &later},
+		{"t-fd-3", "No Due", nil},
+	} {
+		task := domain.Task{
+			ID:          tc.id,
+			ProviderID:  providerID,
+			WorkspaceID: workspaceID,
+			BoardID:     &boardID,
+			ColumnID:    &columnID,
+			Title:       tc.title,
+			Priority:    0,
+			DueAt:       tc.due,
+			Labels:      []string{},
+			Position:    1,
+			CreatedAt:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			UpdatedAt:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		}
+		if err := repo.Create(ctx, task); err != nil {
+			t.Fatalf("create task %s: %v", tc.title, err)
+		}
+	}
+
+	cutoff := time.Date(2024, 6, 17, 0, 0, 0, 0, time.UTC)
+	got, err := repo.List(ctx, domain.TaskFilter{WorkspaceID: workspaceID, DueSoonBy: &cutoff})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(got))
+	}
+	if got[0].Title != "Due Soon" {
+		t.Errorf("Title = %q, want Due Soon", got[0].Title)
+	}
+}
+
+func TestTaskRepository_ListBoards(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	_, workspaceID, _, _ := seedProviderWorkspaceBoardColumn(t, ctx, q)
+
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          "b-list-2",
+		WorkspaceID: workspaceID,
+		Name:        "Second Board",
+		ViewDefault: "list",
+	}); err != nil {
+		t.Fatalf("create second board: %v", err)
+	}
+
+	repo := NewTaskRepository(store.New(adapter))
+	got, err := repo.ListBoards(ctx, workspaceID)
+	if err != nil {
+		t.Fatalf("list boards: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(boards) = %d, want 2", len(got))
+	}
+}
+
+func TestTaskRepository_ListColumns(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	_, _, boardID, _ := seedProviderWorkspaceBoardColumn(t, ctx, q)
+
+	if err := q.CreateColumn(ctx, sqlc.CreateColumnParams{
+		ID:       "c-list-2",
+		BoardID:  boardID,
+		Name:     "Done",
+		Color:    "#00FF00",
+		Position: 2,
+	}); err != nil {
+		t.Fatalf("create second column: %v", err)
+	}
+
+	repo := NewTaskRepository(store.New(adapter))
+	got, err := repo.ListColumns(ctx, boardID)
+	if err != nil {
+		t.Fatalf("list columns: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(columns) = %d, want 2", len(got))
+	}
+}
+
+func TestTaskRepository_GetByID_NotFound(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewTaskRepository(store.New(adapter))
+
+	_, err := repo.GetByID(ctx, "missing-task")
+	if err == nil {
+		t.Fatal("expected error for missing task, got nil")
+	}
+}
+
+func TestTaskRepository_Delete_NotFound(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewTaskRepository(store.New(adapter))
+
+	// Deleting a non-existent task should not error (sqlite exec with no rows)
+	if err := repo.Delete(ctx, "missing-task"); err != nil {
+		t.Fatalf("delete non-existent task: %v", err)
+	}
+}
+
 func TestTaskRepository_Move_ErrorContext(t *testing.T) {
 	adapter := newTestAdapter(t)
 	ctx := context.Background()

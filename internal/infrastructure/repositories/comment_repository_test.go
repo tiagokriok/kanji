@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,6 +132,55 @@ func TestCommentRepository_Create(t *testing.T) {
 	}
 	if got.Author == nil || *got.Author != "alice" {
 		t.Errorf("Author = %v, want alice", got.Author)
+	}
+}
+
+func TestCommentRepository_Create_ErrorContext(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	task := seedTask(t, ctx, adapter.Queries())
+
+	repo := NewCommentRepository(store.New(adapter))
+	comment := domain.Comment{
+		ID:         "cm-dup",
+		TaskID:     task.ID,
+		ProviderID: task.ProviderID,
+		BodyMD:     "first",
+		CreatedAt:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	if err := repo.Create(ctx, comment); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+
+	err := repo.Create(ctx, comment)
+	if err == nil {
+		t.Fatal("expected error for duplicate comment ID, got nil")
+	}
+	if !strings.Contains(err.Error(), "create comment:") {
+		t.Errorf("error = %q, want 'create comment:' prefix", err.Error())
+	}
+
+	comments, err := repo.ListByTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("list comments: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Errorf("len(comments) = %d, want 1", len(comments))
+	}
+}
+
+func TestCommentRepository_ListByTask_Empty(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	task := seedTask(t, ctx, adapter.Queries())
+
+	repo := NewCommentRepository(store.New(adapter))
+	comments, err := repo.ListByTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("list comments: %v", err)
+	}
+	if len(comments) != 0 {
+		t.Errorf("len(comments) = %d, want 0", len(comments))
 	}
 }
 

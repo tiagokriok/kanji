@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
 )
@@ -13,8 +12,7 @@ type Store interface {
 	Queries() *sqlc.Queries
 }
 
-// Tx exposes the sqlc query and raw transaction for mixed usage.
+// Tx exposes the sqlc query interface inside a transaction.
 type Tx interface {
 	Queries() *sqlc.Queries
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }

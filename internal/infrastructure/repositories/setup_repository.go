@@ -85,12 +85,16 @@ func (r *SetupRepository) RenameWorkspace(ctx context.Context, workspaceID, name
 		return fmt.Errorf("workspace name is required")
 	}
 
-	return r.store.InTx(ctx, func(tx store.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE workspaces SET name = ? WHERE id = ?`, name, workspaceID); err != nil {
-			return fmt.Errorf("rename workspace: %w", err)
-		}
-		return nil
-	})
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		return qtx.UpdateWorkspaceName(ctx, sqlc.UpdateWorkspaceNameParams{
+			Name: name,
+			ID:   workspaceID,
+		})
+	}); err != nil {
+		return fmt.Errorf("rename workspace: %w", err)
+	}
+	return nil
 }
 
 func (r *SetupRepository) ListBoards(ctx context.Context, workspaceID string) ([]domain.Board, error) {
@@ -131,12 +135,16 @@ func (r *SetupRepository) RenameBoard(ctx context.Context, boardID, name string)
 		return fmt.Errorf("board name is required")
 	}
 
-	return r.store.InTx(ctx, func(tx store.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE boards SET name = ? WHERE id = ?`, name, boardID); err != nil {
-			return fmt.Errorf("rename board: %w", err)
-		}
-		return nil
-	})
+	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
+		return qtx.UpdateBoardName(ctx, sqlc.UpdateBoardNameParams{
+			Name: name,
+			ID:   boardID,
+		})
+	}); err != nil {
+		return fmt.Errorf("rename board: %w", err)
+	}
+	return nil
 }
 
 func (r *SetupRepository) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {
@@ -183,24 +191,19 @@ func (r *SetupRepository) ReorderColumns(ctx context.Context, boardID string, or
 	}
 
 	return r.store.InTx(ctx, func(tx store.Tx) error {
+		qtx := tx.Queries()
 		for idx, columnID := range orderedColumnIDs {
 			columnID = strings.TrimSpace(columnID)
 			if columnID == "" {
 				return fmt.Errorf("column id at position %d is empty", idx+1)
 			}
-			result, execErr := tx.ExecContext(
-				ctx,
-				`UPDATE columns SET position = ? WHERE id = ? AND board_id = ?`,
-				idx+1,
-				columnID,
-				boardID,
-			)
+			affected, execErr := qtx.UpdateColumnPosition(ctx, sqlc.UpdateColumnPositionParams{
+				Position: int64(idx + 1),
+				ID:       columnID,
+				BoardID:  boardID,
+			})
 			if execErr != nil {
 				return fmt.Errorf("update position for column %s: %w", columnID, execErr)
-			}
-			affected, affErr := result.RowsAffected()
-			if affErr != nil {
-				return fmt.Errorf("rows affected for column %s: %w", columnID, affErr)
 			}
 			if affected == 0 {
 				return fmt.Errorf("column %s not found in board", columnID)

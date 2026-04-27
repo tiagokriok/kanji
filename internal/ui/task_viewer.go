@@ -96,23 +96,9 @@ func (m Model) updateTaskViewer(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tasksLoadedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = msg.err.Error()
-			return m, nil
-		}
-		m.tasks = m.applyActiveFilters(msg.tasks)
-		m.sortTasks(m.tasks)
-		m.ensureSelection()
-		return m, nil
+		return m.handleTasksLoaded(msg, false, false)
 	case commentsLoadedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.statusLine = msg.err.Error()
-			return m, nil
-		}
-		m.comments = msg.comments
-		return m, nil
+		return m.handleCommentsLoaded(msg)
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Confirm), key.Matches(msg, m.keys.OpenDetails):
