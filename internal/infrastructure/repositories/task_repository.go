@@ -3,7 +3,6 @@ package repositories
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
 	"github.com/tiagokriok/kanji/internal/domain"
@@ -20,7 +19,7 @@ func NewTaskRepository(s store.Store) *TaskRepository {
 }
 
 func (r *TaskRepository) Create(ctx context.Context, task domain.Task) error {
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "create task", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		return qtx.CreateTask(ctx, sqlc.CreateTaskParams{
 			ID:            task.ID,
@@ -46,14 +45,11 @@ func (r *TaskRepository) Create(ctx context.Context, task domain.Task) error {
 			CreatedAt:  task.CreatedAt.UTC().Format(time.RFC3339),
 			UpdatedAt:  task.UpdatedAt.UTC().Format(time.RFC3339),
 		})
-	}); err != nil {
-		return fmt.Errorf("create task: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *TaskRepository) Update(ctx context.Context, taskID string, patch domain.TaskPatch) error {
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "update task", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		arg := sqlc.UpdateTaskParams{
 			Title:         nullString(patch.Title),
@@ -69,10 +65,7 @@ func (r *TaskRepository) Update(ctx context.Context, taskID string, patch domain
 			arg.LabelsJSON = sql.NullString{String: marshalLabels(*patch.Labels), Valid: true}
 		}
 		return qtx.UpdateTask(ctx, arg)
-	}); err != nil {
-		return fmt.Errorf("update task: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *TaskRepository) GetByID(ctx context.Context, taskID string) (domain.Task, error) {
@@ -108,7 +101,7 @@ func (r *TaskRepository) List(ctx context.Context, filter domain.TaskFilter) ([]
 }
 
 func (r *TaskRepository) Move(ctx context.Context, input domain.MoveTaskInput) error {
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "move task", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		return qtx.MoveTask(ctx, sqlc.MoveTaskParams{
 			ColumnID:  nullString(input.ColumnID),
@@ -117,14 +110,13 @@ func (r *TaskRepository) Move(ctx context.Context, input domain.MoveTaskInput) e
 			UpdatedAt: input.UpdatedAt.UTC().Format(time.RFC3339),
 			ID:        input.TaskID,
 		})
-	}); err != nil {
-		return fmt.Errorf("move task: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *TaskRepository) Delete(ctx context.Context, id string) error {
-	return r.store.Queries().DeleteTask(ctx, id)
+	return r.store.Write(ctx, "delete task", func(tx store.Tx) error {
+		return tx.Queries().DeleteTask(ctx, id)
+	})
 }
 
 func (r *TaskRepository) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {

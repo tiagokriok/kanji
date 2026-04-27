@@ -153,3 +153,84 @@ func TestKernel_InTx_RollbacksOnError(t *testing.T) {
 		t.Fatal("expected provider p2 to be rolled back")
 	}
 }
+
+func TestKernel_Write_CommitsOnSuccess(t *testing.T) {
+	adapter := newTestAdapter(t)
+	s := New(adapter)
+
+	ctx := context.Background()
+	err := s.Write(ctx, "create provider", func(tx Tx) error {
+		return tx.Queries().CreateProvider(ctx, sqlc.CreateProviderParams{
+			ID:        "p-write",
+			Type:      "local",
+			Name:      "Write Provider",
+			CreatedAt: "2024-01-01T00:00:00Z",
+		})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	items, err := adapter.Queries().ListProviders(ctx)
+	if err != nil {
+		t.Fatalf("list providers: %v", err)
+	}
+	p, ok := findProvider(items, "p-write")
+	if !ok {
+		t.Fatal("expected provider p-write to exist after commit")
+	}
+	if p.Name != "Write Provider" {
+		t.Errorf("Name = %q, want %q", p.Name, "Write Provider")
+	}
+}
+
+func TestKernel_Write_WrapsError(t *testing.T) {
+	adapter := newTestAdapter(t)
+	s := New(adapter)
+
+	ctx := context.Background()
+	innerErr := errors.New("db down")
+	err := s.Write(ctx, "create provider", func(tx Tx) error {
+		return innerErr
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	want := "create provider: db down"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+	if !errors.Is(err, innerErr) {
+		t.Errorf("expected wrapped error to contain innerErr")
+	}
+}
+
+func TestKernel_Write_RollbacksOnError(t *testing.T) {
+	adapter := newTestAdapter(t)
+	s := New(adapter)
+
+	ctx := context.Background()
+	expectedErr := errors.New("intentional failure")
+	err := s.Write(ctx, "seed", func(tx Tx) error {
+		if err := tx.Queries().CreateProvider(ctx, sqlc.CreateProviderParams{
+			ID:        "p-write-rollback",
+			Type:      "local",
+			Name:      "Should Not Exist",
+			CreatedAt: "2024-01-01T00:00:00Z",
+		}); err != nil {
+			return err
+		}
+		return expectedErr
+	})
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected %v, got %v", expectedErr, err)
+	}
+
+	items, err := adapter.Queries().ListProviders(ctx)
+	if err != nil {
+		t.Fatalf("list providers: %v", err)
+	}
+	if _, ok := findProvider(items, "p-write-rollback"); ok {
+		t.Fatal("expected provider p-write-rollback to be rolled back")
+	}
+}

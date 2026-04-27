@@ -43,6 +43,13 @@ func (k *kernel) InTx(ctx context.Context, fn func(Tx) error) error {
 	return nil
 }
 
+func (k *kernel) Write(ctx context.Context, op string, fn func(Tx) error) error {
+	if err := k.InTx(ctx, fn); err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	return nil
+}
+
 type txBound struct {
 	queries *sqlc.Queries
 	tx      *sql.Tx

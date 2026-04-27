@@ -9,6 +9,7 @@ import (
 // Store is a shared transaction boundary for SQLite-backed operations.
 type Store interface {
 	InTx(ctx context.Context, fn func(Tx) error) error
+	Write(ctx context.Context, op string, fn func(Tx) error) error
 	Queries() *sqlc.Queries
 }
 

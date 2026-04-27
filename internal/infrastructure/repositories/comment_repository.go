@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/tiagokriok/kanji/internal/domain"
@@ -19,7 +18,7 @@ func NewCommentRepository(s store.Store) *CommentRepository {
 }
 
 func (r *CommentRepository) Create(ctx context.Context, comment domain.Comment) error {
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "create comment", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		return qtx.CreateComment(ctx, sqlc.CreateCommentParams{
 			ID:         comment.ID,
@@ -30,10 +29,7 @@ func (r *CommentRepository) Create(ctx context.Context, comment domain.Comment) 
 			Author:     nullString(comment.Author),
 			CreatedAt:  comment.CreatedAt.UTC().Format(time.RFC3339),
 		})
-	}); err != nil {
-		return fmt.Errorf("create comment: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *CommentRepository) ListByTask(ctx context.Context, taskID string) ([]domain.Comment, error) {

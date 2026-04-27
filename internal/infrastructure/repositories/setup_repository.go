@@ -33,7 +33,7 @@ func (r *SetupRepository) ListProviders(ctx context.Context) ([]domain.Provider,
 }
 
 func (r *SetupRepository) CreateProvider(ctx context.Context, provider domain.Provider) error {
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "create provider", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		return qtx.CreateProvider(ctx, sqlc.CreateProviderParams{
 			ID:        provider.ID,
@@ -42,10 +42,7 @@ func (r *SetupRepository) CreateProvider(ctx context.Context, provider domain.Pr
 			AuthJSON:  nullString(provider.AuthJSON),
 			CreatedAt: provider.CreatedAt.UTC().Format(time.RFC3339),
 		})
-	}); err != nil {
-		return fmt.Errorf("create provider: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *SetupRepository) ListWorkspaces(ctx context.Context) ([]domain.Workspace, error) {
@@ -61,7 +58,7 @@ func (r *SetupRepository) ListWorkspaces(ctx context.Context) ([]domain.Workspac
 }
 
 func (r *SetupRepository) CreateWorkspace(ctx context.Context, workspace domain.Workspace) error {
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "create workspace", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		return qtx.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
 			ID:         workspace.ID,
@@ -69,10 +66,7 @@ func (r *SetupRepository) CreateWorkspace(ctx context.Context, workspace domain.
 			RemoteID:   nullString(workspace.RemoteID),
 			Name:       workspace.Name,
 		})
-	}); err != nil {
-		return fmt.Errorf("create workspace: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *SetupRepository) RenameWorkspace(ctx context.Context, workspaceID, name string) error {
@@ -85,16 +79,13 @@ func (r *SetupRepository) RenameWorkspace(ctx context.Context, workspaceID, name
 		return fmt.Errorf("workspace name is required")
 	}
 
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "rename workspace", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		return qtx.UpdateWorkspaceName(ctx, sqlc.UpdateWorkspaceNameParams{
 			Name: name,
 			ID:   workspaceID,
 		})
-	}); err != nil {
-		return fmt.Errorf("rename workspace: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *SetupRepository) ListBoards(ctx context.Context, workspaceID string) ([]domain.Board, error) {
@@ -110,7 +101,7 @@ func (r *SetupRepository) ListBoards(ctx context.Context, workspaceID string) ([
 }
 
 func (r *SetupRepository) CreateBoard(ctx context.Context, board domain.Board) error {
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "create board", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		return qtx.CreateBoard(ctx, sqlc.CreateBoardParams{
 			ID:          board.ID,
@@ -119,10 +110,7 @@ func (r *SetupRepository) CreateBoard(ctx context.Context, board domain.Board) e
 			Name:        board.Name,
 			ViewDefault: board.ViewDefault,
 		})
-	}); err != nil {
-		return fmt.Errorf("create board: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *SetupRepository) RenameBoard(ctx context.Context, boardID, name string) error {
@@ -135,16 +123,13 @@ func (r *SetupRepository) RenameBoard(ctx context.Context, boardID, name string)
 		return fmt.Errorf("board name is required")
 	}
 
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "rename board", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		return qtx.UpdateBoardName(ctx, sqlc.UpdateBoardNameParams{
 			Name: name,
 			ID:   boardID,
 		})
-	}); err != nil {
-		return fmt.Errorf("rename board: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *SetupRepository) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {
@@ -160,7 +145,7 @@ func (r *SetupRepository) ListColumns(ctx context.Context, boardID string) ([]do
 }
 
 func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column) error {
-	if err := r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "create column", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		var wip sql.NullInt64
 		if column.WIPLimit != nil {
@@ -175,10 +160,7 @@ func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column
 			Position: int64(column.Position),
 			WipLimit: wip,
 		})
-	}); err != nil {
-		return fmt.Errorf("create column: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *SetupRepository) ReorderColumns(ctx context.Context, boardID string, orderedColumnIDs []string) error {
