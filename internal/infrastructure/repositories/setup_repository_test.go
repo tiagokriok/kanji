@@ -839,3 +839,46 @@ func TestSetupRepository_ReorderColumns_NotFound(t *testing.T) {
 		t.Errorf("error = %q, want 'missing not found in board'", err.Error())
 	}
 }
+
+func TestSetupRepository_ReorderColumns_WriteWrapsError(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID := seedProvider(t, ctx, q)
+	if err := q.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+		ID:         "w-reorder-wrap",
+		ProviderID: providerID,
+		Name:       "Workspace",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          "b-reorder-wrap",
+		WorkspaceID: "w-reorder-wrap",
+		Name:        "Board",
+		ViewDefault: "kanban",
+	}); err != nil {
+		t.Fatalf("create board: %v", err)
+	}
+	if err := q.CreateColumn(ctx, sqlc.CreateColumnParams{
+		ID:       "c-reorder-wrap",
+		BoardID:  "b-reorder-wrap",
+		Name:     "Column",
+		Color:    "#6B7280",
+		Position: 1,
+	}); err != nil {
+		t.Fatalf("create column: %v", err)
+	}
+
+	repo := NewSetupRepository(store.New(adapter))
+	err := repo.ReorderColumns(ctx, "b-reorder-wrap", []string{"c-reorder-wrap", "missing-col"})
+	if err == nil {
+		t.Fatal("expected error for missing column, got nil")
+	}
+	if !strings.Contains(err.Error(), "reorder columns:") {
+		t.Errorf("error = %q, want 'reorder columns:' prefix", err.Error())
+	}
+	if !strings.Contains(err.Error(), "missing-col not found in board") {
+		t.Errorf("error = %q, want 'missing-col not found in board'", err.Error())
+	}
+}

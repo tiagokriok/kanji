@@ -172,7 +172,7 @@ func (r *SetupRepository) ReorderColumns(ctx context.Context, boardID string, or
 		return fmt.Errorf("at least one column id is required")
 	}
 
-	return r.store.InTx(ctx, func(tx store.Tx) error {
+	return r.store.Write(ctx, "reorder columns", func(tx store.Tx) error {
 		qtx := tx.Queries()
 		for idx, columnID := range orderedColumnIDs {
 			columnID = strings.TrimSpace(columnID)
