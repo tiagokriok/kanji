@@ -11,20 +11,6 @@ import (
 	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
 
-func seedProvider(t *testing.T, ctx context.Context, q *sqlc.Queries) string {
-	t.Helper()
-	providerID := "p-setup"
-	if err := q.CreateProvider(ctx, sqlc.CreateProviderParams{
-		ID:        providerID,
-		Type:      "local",
-		Name:      "Test Provider",
-		CreatedAt: "2024-01-01T00:00:00Z",
-	}); err != nil {
-		t.Fatalf("create provider: %v", err)
-	}
-	return providerID
-}
-
 func TestSetupRepository_CreateProvider(t *testing.T) {
 	adapter := newTestAdapter(t)
 	ctx := context.Background()

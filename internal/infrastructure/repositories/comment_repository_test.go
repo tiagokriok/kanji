@@ -2,37 +2,14 @@ package repositories
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/tiagokriok/kanji/internal/domain"
-	"github.com/tiagokriok/kanji/internal/infrastructure/db"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db/sqlc"
 	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
-
-func newTestAdapter(t *testing.T) db.Adapter {
-	t.Helper()
-	tmpFile, err := os.CreateTemp("", "kanji-comment-repo-test-*.db")
-	if err != nil {
-		t.Fatalf("create temp db: %v", err)
-	}
-	t.Cleanup(func() { os.Remove(tmpFile.Name()) })
-	tmpFile.Close()
-
-	adapter, err := db.NewSQLiteAdapter(tmpFile.Name())
-	if err != nil {
-		t.Fatalf("new sqlite adapter: %v", err)
-	}
-	t.Cleanup(func() { adapter.Close() })
-
-	if err := db.RunMigrations(context.Background(), adapter.Raw()); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-	return adapter
-}
 
 func seedTask(t *testing.T, ctx context.Context, q *sqlc.Queries) domain.Task {
 	t.Helper()
