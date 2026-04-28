@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 
 	"sort"
@@ -428,28 +427,6 @@ func (m Model) renderFooter() string {
 		lines = append(lines, inputLine)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
-}
-
-func (m Model) loadTasksCmd() tea.Cmd {
-	filters := application.ListTaskFilters{
-		WorkspaceID: m.workspaceID,
-		BoardID:     m.boardID,
-		TitleQuery:  m.titleFilter,
-		ColumnID:    m.columnFilter,
-	}
-	flow := m.taskFlow
-	return func() tea.Msg {
-		tasks, err := flow.ListTasks(context.Background(), filters)
-		return tasksLoadedMsg{tasks: tasks, err: err}
-	}
-}
-
-func (m Model) loadCommentsCmd(taskID string) tea.Cmd {
-	service := m.commentService
-	return func() tea.Msg {
-		comments, err := service.ListComments(context.Background(), taskID)
-		return commentsLoadedMsg{comments: comments, err: err}
-	}
 }
 
 func (m Model) applyActiveFilters(tasks []domain.Task) []domain.Task {
