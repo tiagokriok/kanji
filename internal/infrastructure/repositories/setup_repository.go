@@ -88,15 +88,7 @@ func (r *SetupRepository) RenameWorkspace(ctx context.Context, workspaceID, name
 }
 
 func (r *SetupRepository) ListBoards(ctx context.Context, workspaceID string) ([]domain.Board, error) {
-	items, err := r.store.Queries().ListBoards(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]domain.Board, 0, len(items))
-	for _, item := range items {
-		result = append(result, fromSQLBoard(item))
-	}
-	return result, nil
+	return queryListBoards(ctx, r.store.Queries(), workspaceID)
 }
 
 func (r *SetupRepository) CreateBoard(ctx context.Context, board domain.Board) error {
@@ -132,15 +124,7 @@ func (r *SetupRepository) RenameBoard(ctx context.Context, boardID, name string)
 }
 
 func (r *SetupRepository) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {
-	items, err := r.store.Queries().ListColumns(ctx, boardID)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]domain.Column, 0, len(items))
-	for _, item := range items {
-		result = append(result, fromSQLColumn(item))
-	}
-	return result, nil
+	return queryListColumns(ctx, r.store.Queries(), boardID)
 }
 
 func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column) error {

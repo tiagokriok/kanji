@@ -115,25 +115,9 @@ func (r *TaskRepository) Delete(ctx context.Context, id string) error {
 }
 
 func (r *TaskRepository) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {
-	items, err := r.store.Queries().ListColumns(ctx, boardID)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]domain.Column, 0, len(items))
-	for _, item := range items {
-		result = append(result, fromSQLColumn(item))
-	}
-	return result, nil
+	return queryListColumns(ctx, r.store.Queries(), boardID)
 }
 
 func (r *TaskRepository) ListBoards(ctx context.Context, workspaceID string) ([]domain.Board, error) {
-	items, err := r.store.Queries().ListBoards(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]domain.Board, 0, len(items))
-	for _, item := range items {
-		result = append(result, fromSQLBoard(item))
-	}
-	return result, nil
+	return queryListBoards(ctx, r.store.Queries(), workspaceID)
 }
