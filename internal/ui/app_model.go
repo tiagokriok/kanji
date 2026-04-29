@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/tiagokriok/kanji/internal/application"
 	"github.com/tiagokriok/kanji/internal/domain"
@@ -207,48 +206,15 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch m.activeOverlay() {
-	case overlayTaskView:
-		return m.updateTaskViewer(msg)
-	case overlayKeybinds:
-		return m.updateKeybindPanel(msg)
-	case overlayFilters:
-		return m.updateFilterPanel(msg)
-	case overlayContexts:
-		return m.updateContextPanel(msg)
-	case overlayInput:
-		return m.updateInputMode(msg)
+	if model, cmd, ok := m.dispatchOverlayUpdate(msg); ok {
+		return model, cmd
 	}
-
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m.textArea.SetWidth(max(20, msg.Width/2-6))
-		m.keyFilter.Width = max(24, msg.Width/3)
-		return m, nil
-	case executeActionMsg:
-		return m.executeAction(msg.action)
-	case tasksLoadedMsg:
-		return m.handleTasksLoaded(msg, true, true)
-	case commentsLoadedMsg:
-		return m.handleCommentsLoaded(msg)
-	case descriptionEditedMsg:
-		return m.handleExternalDescriptionEdited(msg)
-	case opResultMsg:
-		return m.handleOpResult(msg)
-	case tea.KeyMsg:
-		if m.confirmingDelete {
-			if msg.String() == "y" {
-				if task, ok := m.currentTask(); ok {
-					m.confirmingDelete = false
-					m.statusLine = ""
-					return m, m.deleteTaskCmd(task.ID)
-				}
-			}
-			m.confirmingDelete = false
-			m.statusLine = ""
-			return m, nil
+	if model, cmd, ok := m.dispatchGlobalMessage(msg); ok {
+		return model, cmd
+	}
+	if msg, ok := msg.(tea.KeyMsg); ok {
+		if model, cmd, ok := m.handleDeleteConfirmKey(msg); ok {
+			return model, cmd
 		}
 		switch {
 		case key.Matches(msg, m.keys.Quit):
@@ -324,58 +290,7 @@ func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
 	}
-
-	var base string
-	if m.viewMode == viewList {
-		base = m.renderListScreen()
-	} else {
-		containerWidth := max(40, m.width-2)
-		header := m.renderHeader(containerWidth)
-		footer := lipgloss.NewStyle().Width(containerWidth).Render(m.renderFooter())
-		bodyHeight := m.height - lipgloss.Height(header) - lipgloss.Height(footer)
-		if bodyHeight < 5 {
-			bodyHeight = 5
-		}
-
-		detailWidth := 0
-		mainWidth := containerWidth
-		if m.showDetails {
-			detailWidth = m.width / 3
-			if detailWidth < 34 {
-				detailWidth = 34
-			}
-			mainWidth = containerWidth - detailWidth - 1
-			if mainWidth < 20 {
-				mainWidth = containerWidth
-				detailWidth = 0
-			}
-		}
-
-		mainPane := m.renderKanbanView(mainWidth, bodyHeight)
-		if detailWidth > 0 {
-			detailPane := m.renderDetailView(detailWidth, bodyHeight)
-			mainPane = lipgloss.JoinHorizontal(lipgloss.Top, mainPane, detailPane)
-		}
-		mainPane = lipgloss.NewStyle().Width(containerWidth).Height(bodyHeight).Render(mainPane)
-
-		content := lipgloss.JoinVertical(lipgloss.Left, header, mainPane, footer)
-		base = lipgloss.NewStyle().Padding(0, 1).Render(content)
-	}
-
-	if m.showKeybinds {
-		return m.renderKeybindPanel(base)
-	}
-	if m.showFilters {
-		return m.renderFilterPanel(base)
-	}
-	if m.showContexts {
-		return m.renderContextPanel(base)
-	}
-	base = m.renderTaskFormOverlay(base)
-	if m.showTaskView {
-		return m.renderTaskViewerPanel(base)
-	}
-	return base
+	return m.wrapOverlays(m.renderBaseView())
 }
 
 func (m Model) applyActiveFilters(tasks []domain.Task) []domain.Task {
