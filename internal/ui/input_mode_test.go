@@ -1268,6 +1268,28 @@ func TestHandleTaskFormKey_TabMovesFocus(t *testing.T) {
 	}
 }
 
+func TestHandleTaskFormKey_CtrlGOpensEditorFromAnyField(t *testing.T) {
+	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{descriptionFull: "long description"}}}
+	m.taskForm.title = textinput.New()
+	m.taskForm.description = textinput.New()
+	m.taskForm.dueDate = textinput.New()
+	m.taskForm.title.Focus()
+	m.taskForm.focus = taskFieldTitle
+
+	model, cmd, handled := m.handleTaskFormKey(tea.KeyMsg{Type: tea.KeyCtrlG})
+	updated := model.(Model)
+
+	if !handled {
+		t.Fatal("expected handled")
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	if updated.taskForm.focus != taskFieldTitle {
+		t.Errorf("focus = %d, want taskFieldTitle", updated.taskForm.focus)
+	}
+}
+
 func TestHandleTaskFormKey_EscNotHandled(t *testing.T) {
 	m := Model{overlayState: overlayState{inputMode: inputTaskForm, taskForm: &taskForm{}}}
 	m.taskForm.title = textinput.New()

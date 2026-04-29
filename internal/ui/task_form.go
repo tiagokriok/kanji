@@ -86,10 +86,7 @@ func (m Model) handleTaskFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		model, cmd := m.submitTaskForm()
 		return model, cmd, true
 	case "ctrl+g":
-		if m.taskForm.focus == taskFieldDescription {
-			return m, openDescriptionEditorCmd(m.taskForm.descriptionFull), true
-		}
-		return m, nil, true
+		return m, openDescriptionEditorCmd(m.taskForm.descriptionFull), true
 	case "enter":
 		if m.taskForm.focus == taskFieldCount-1 {
 			model, cmd := m.submitTaskForm()
