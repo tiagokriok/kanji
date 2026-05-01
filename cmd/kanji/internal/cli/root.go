@@ -29,6 +29,7 @@ Use "kanji help" for available commands.
 
 	root.AddCommand(newDataCommand())
 	root.AddCommand(newHelpCommand())
+	root.AddCommand(newContextCommand())
 
 	return root
 }
