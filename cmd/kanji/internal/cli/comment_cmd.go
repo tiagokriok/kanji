@@ -17,7 +17,103 @@ func newCommentCommand() *cobra.Command {
 	}
 	c.AddCommand(newCommentListCommand())
 	c.AddCommand(newCommentGetCommand())
+	c.AddCommand(newCommentCreateCommand())
 	return c
+}
+
+func newCommentCreateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a comment on a task",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runCommentCreate(cmd, ns)
+		},
+	}
+	cmd.Flags().String("task-id", "", "task ID")
+	cmd.Flags().String("body", "", "comment body")
+	cmd.Flags().String("body-file", "", "path to file containing comment body (- for stdin)")
+	cmd.Flags().String("author", "", "comment author")
+	return cmd
+}
+
+func runCommentCreate(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve task.
+	var taskID string
+	if cmd.Flags().Changed("task-id") {
+		taskID, _ = cmd.Flags().GetString("task-id")
+	} else {
+		return NewValidation("task-id is required")
+	}
+
+	task, err := rt.TaskService.GetTask(ctx, taskID)
+	if err != nil {
+		return NewNotFound("task", taskID)
+	}
+
+	// Resolve body.
+	body, err := ResolveTextInput(cmd, "body", "body-file", false, nil)
+	if err != nil {
+		return err
+	}
+
+	// Optional author.
+	var author *string
+	if cmd.Flags().Changed("author") {
+		a, _ := cmd.Flags().GetString("author")
+		author = &a
+	}
+
+	comment, err := rt.CommentService.AddComment(ctx, application.AddCommentInput{
+		TaskID:     task.ID,
+		ProviderID: task.ProviderID,
+		BodyMD:     body,
+		Author:     author,
+	})
+	if err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		payload := map[string]interface{}{
+			"id":      comment.ID,
+			"task_id": comment.TaskID,
+			"body":    comment.BodyMD,
+		}
+		if comment.Author != nil {
+			payload["author"] = *comment.Author
+		}
+		return RenderWriteResultJSON(cmd.OutOrStdout(), "comment", payload)
+	}
+
+	fields := map[string]string{
+		"Task ID": comment.TaskID,
+		"Body":    comment.BodyMD,
+	}
+	if comment.Author != nil {
+		fields["Author"] = *comment.Author
+	}
+	return RenderWriteResult(cmd.OutOrStdout(), "comment", comment.ID, fields)
 }
 
 func newCommentListCommand() *cobra.Command {
