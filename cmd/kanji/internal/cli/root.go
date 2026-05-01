@@ -34,6 +34,7 @@ Use "kanji help" for available commands.
 	root.AddCommand(newWorkspaceCommand())
 	root.AddCommand(newBoardCommand())
 	root.AddCommand(newColumnCommand())
+	root.AddCommand(newTaskCommand())
 
 	return root
 }
