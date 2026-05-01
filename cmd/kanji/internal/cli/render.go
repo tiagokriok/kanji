@@ -172,6 +172,9 @@ func RenderDryRunImpactJSON(w io.Writer, resourceName string, impact map[string]
 
 // RenderDeleteResult writes a human-readable delete success block.
 func RenderDeleteResult(w io.Writer, resourceName, id string) error {
+	if len(resourceName) > 0 {
+		resourceName = strings.ToUpper(resourceName[:1]) + resourceName[1:]
+	}
 	fmt.Fprintf(w, "%s deleted\nID:  %s\n", resourceName, id)
 	return nil
 }

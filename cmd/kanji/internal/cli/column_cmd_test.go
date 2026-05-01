@@ -495,7 +495,7 @@ func TestColumnDelete_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	assert.Contains(t, output, "column deleted")
+	assert.Contains(t, output, "Column deleted")
 
 	rt3, err := NewRuntime(context.Background(), cfg)
 	require.NoError(t, err)
@@ -599,7 +599,7 @@ func TestColumnDelete_WithReassign(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	assert.Contains(t, output, "column deleted")
+	assert.Contains(t, output, "Column deleted")
 
 	rt3, err := NewRuntime(context.Background(), cfg)
 	require.NoError(t, err)
@@ -654,6 +654,43 @@ func TestColumnDelete_RequiresYes(t *testing.T) {
 	err = runColumnDeleteWithStore(cmd, ns, store)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "yes")
+}
+
+func TestColumnDelete_SelfReassignment(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	rt2, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	columns, err := rt2.ContextService.ListColumns(context.Background(), setup.Board.ID)
+	require.NoError(t, err)
+	rt2.Close()
+
+	store := state.NewStore(dir + "/state.json")
+	require.NoError(t, store.SetCLIContext("test-ns", state.CLIContext{WorkspaceID: setup.Workspace.ID, BoardID: setup.Board.ID}))
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("column-id", columns[0].ID, "")
+	cmd.Flags().String("column", "", "")
+	cmd.Flags().String("move-tasks-to", columns[0].ID, "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--column-id", columns[0].ID, "--move-tasks-to", columns[0].ID, "--yes"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runColumnDeleteWithStore(cmd, ns, store)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "same column")
 }
 
 func TestColumnDelete_NotFound(t *testing.T) {

@@ -113,6 +113,27 @@ func TestBoardDeleteService_Delete(t *testing.T) {
 	assert.Empty(t, tasks)
 }
 
+func TestBoardDeleteService_BoardDeleteImpact_WrongWorkspace(t *testing.T) {
+	adapter := newTestDB(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	_, workspaceID := seedWorkspace(t, ctx, q)
+	boardID, _ := seedBoardWithColumns(t, ctx, q, workspaceID)
+
+	s := store.New(adapter)
+	svc := NewBoardDeleteService(
+		repositories.NewSetupRepository(s),
+		repositories.NewTaskRepository(s),
+		repositories.NewCommentRepository(s),
+	)
+
+	_, err := svc.BoardDeleteImpact(ctx, "wrong-ws", boardID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found in workspace")
+	assert.Contains(t, err.Error(), boardID)
+	assert.Contains(t, err.Error(), "wrong-ws")
+}
+
 func TestBoardDeleteService_Delete_EmptyBoardID(t *testing.T) {
 	adapter := newTestDB(t)
 	ctx := context.Background()

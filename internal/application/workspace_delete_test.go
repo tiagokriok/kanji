@@ -218,6 +218,11 @@ func TestWorkspaceDeleteService_Delete(t *testing.T) {
 	tasks, err := q.ListTasks(ctx, sqlc.ListTasksParams{WorkspaceID: workspaceID})
 	require.NoError(t, err)
 	assert.Empty(t, tasks)
+
+	var commentCount int
+	err = adapter.Raw().QueryRow("SELECT COUNT(*) FROM comments").Scan(&commentCount)
+	require.NoError(t, err)
+	assert.Equal(t, 0, commentCount)
 }
 
 func TestWorkspaceDeleteService_Delete_EmptyWorkspaceID(t *testing.T) {

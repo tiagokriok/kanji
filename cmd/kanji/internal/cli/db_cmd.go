@@ -7,7 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tiagokriok/kanji/internal/application"
 	"github.com/tiagokriok/kanji/internal/infrastructure/db"
+	"github.com/tiagokriok/kanji/internal/infrastructure/repositories"
+	"github.com/tiagokriok/kanji/internal/infrastructure/store"
 )
 
 func newDBCommand() *cobra.Command {
@@ -144,17 +147,45 @@ func runDBDoctor(cmd *cobra.Command, ns Namespace) error {
 		}
 	}
 
-	// Check bootstrap.
+	// Check bootstrap and run diagnostics via Runtime.
 	if len(findings) == 0 {
-		rt, err := NewRuntime(context.Background(), cfg)
+		ctx := context.Background()
+		rt, err := NewRuntime(ctx, cfg)
 		if err == nil {
 			defer rt.Close()
-			workspaces, err := rt.ContextService.ListWorkspaces(context.Background())
+			workspaces, err := rt.ContextService.ListWorkspaces(ctx)
 			if err != nil || len(workspaces) == 0 {
 				findings = append(findings, doctorFinding{
 					Code:    "bootstrap_missing",
 					Message: "System is not bootstrapped. Run: kanji data bootstrap",
 				})
+			}
+
+			// Duplicate name checks
+			setupRepo := repositories.NewSetupRepository(rt.Store)
+
+			wsDups, _ := application.FindDuplicateWorkspaceNames(ctx, setupRepo)
+			for _, d := range wsDups {
+				findings = append(findings, doctorFinding{Code: "duplicate_names", Message: fmt.Sprintf("workspace name %q has %d duplicates", d.Name, d.Count)})
+			}
+
+			boardDups, _ := application.FindDuplicateBoardNames(ctx, setupRepo)
+			for _, d := range boardDups {
+				findings = append(findings, doctorFinding{Code: "duplicate_names", Message: fmt.Sprintf("board name %q has %d duplicates", d.Name, d.Count)})
+			}
+
+			colDups, _ := application.FindDuplicateColumnNames(ctx, setupRepo)
+			for _, d := range colDups {
+				findings = append(findings, doctorFinding{Code: "duplicate_names", Message: fmt.Sprintf("column name %q has %d duplicates", d.Name, d.Count)})
+			}
+
+			// Dangling context refs
+			stateStore, serr := defaultStateStore()
+			if serr == nil {
+				dangling, _ := application.FindDanglingContextRefs(ctx, setupRepo, stateStore)
+				for _, d := range dangling {
+					findings = append(findings, doctorFinding{Code: "dangling_context", Message: d})
+				}
 			}
 		}
 	}
@@ -193,11 +224,27 @@ func runDBMigrateUp(cmd *cobra.Command, ns Namespace) error {
 		return err
 	}
 
-	rt, err := NewRuntime(context.Background(), cfg)
+	adapter, err := db.NewSQLiteAdapter(cfg.DBPath)
 	if err != nil {
 		return err
 	}
-	defer rt.Close()
+	defer adapter.Close()
+
+	// Preflight: check for duplicate names that would block new constraints.
+	// Only run if the database has already been migrated (tables exist).
+	var version int64
+	if err := adapter.Raw().QueryRow(
+		"SELECT version_id FROM goose_db_version ORDER BY version_id DESC LIMIT 1",
+	).Scan(&version); err == nil {
+		setupRepo := repositories.NewSetupRepository(store.New(adapter))
+		if err := application.PreflightMigrations(context.Background(), setupRepo); err != nil {
+			return err
+		}
+	}
+
+	if err := db.RunMigrations(context.Background(), adapter.Raw()); err != nil {
+		return err
+	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), "Migrations completed.")
 	return nil

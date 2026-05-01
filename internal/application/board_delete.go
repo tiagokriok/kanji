@@ -36,6 +36,21 @@ func (s *BoardDeleteService) BoardDeleteImpact(ctx context.Context, workspaceID,
 		return BoardDeleteImpact{}, fmt.Errorf("board id is required")
 	}
 
+	boards, err := s.setupRepo.ListBoards(ctx, workspaceID)
+	if err != nil {
+		return BoardDeleteImpact{}, err
+	}
+	found := false
+	for _, b := range boards {
+		if b.ID == boardID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return BoardDeleteImpact{}, fmt.Errorf("board %s not found in workspace %s", boardID, workspaceID)
+	}
+
 	columns, err := s.setupRepo.ListColumns(ctx, boardID)
 	if err != nil {
 		return BoardDeleteImpact{}, err

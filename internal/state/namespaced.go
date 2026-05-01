@@ -160,6 +160,28 @@ func (s *Store) SanitizeNamespace(namespace string, workspaceID string) error {
 	return s.Save(st)
 }
 
+// SanitizeBoard removes all references to the given boardID from the
+// namespace's CLI context and TUI state.
+func (s *Store) SanitizeBoard(namespace string, boardID string) error {
+	st, err := s.Load()
+	if err != nil {
+		return err
+	}
+	ns := st.Namespaces[namespace]
+	if ns.CLIContext.BoardID == boardID {
+		ns.CLIContext.BoardID = ""
+	}
+	if ns.TUIState.LastBoardByWorkspace != nil {
+		for wsID, bid := range ns.TUIState.LastBoardByWorkspace {
+			if bid == boardID {
+				delete(ns.TUIState.LastBoardByWorkspace, wsID)
+			}
+		}
+	}
+	st.Namespaces[namespace] = ns
+	return s.Save(st)
+}
+
 // ClearBoard removes the board ID from the namespace's CLI context while
 // preserving the workspace ID.
 func (s *Store) ClearBoard(namespace string) error {

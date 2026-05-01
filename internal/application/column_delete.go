@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -35,7 +36,7 @@ func (s *ColumnDeleteService) ColumnTaskCount(ctx context.Context, workspaceID, 
 }
 
 // ReassignTasks moves all tasks from one column to another.
-func (s *ColumnDeleteService) ReassignTasks(ctx context.Context, workspaceID, fromColumnID, toColumnID string) error {
+func (s *ColumnDeleteService) ReassignTasks(ctx context.Context, workspaceID, fromColumnID, toColumnID, toStatus string) error {
 	fromColumnID = strings.TrimSpace(fromColumnID)
 	toColumnID = strings.TrimSpace(toColumnID)
 	if fromColumnID == "" {
@@ -44,13 +45,16 @@ func (s *ColumnDeleteService) ReassignTasks(ctx context.Context, workspaceID, fr
 	if toColumnID == "" {
 		return fmt.Errorf("to column id is required")
 	}
+	if toStatus == "" {
+		return errors.New("destination column status cannot be empty")
+	}
 
 	tasks, err := s.taskRepo.List(ctx, domain.TaskFilter{WorkspaceID: workspaceID, ColumnID: fromColumnID})
 	if err != nil {
 		return err
 	}
 	for _, task := range tasks {
-		if err := s.taskFlow.MoveTask(ctx, task.ID, &toColumnID, nil, 0); err != nil {
+		if err := s.taskFlow.MoveTask(ctx, task.ID, &toColumnID, &toStatus, 0); err != nil {
 			return err
 		}
 	}

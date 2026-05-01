@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -390,18 +391,23 @@ func runColumnDeleteWithStore(cmd *cobra.Command, ns Namespace, store *state.Sto
 	}
 
 	if moveTasksTo != "" {
+		if moveTasksTo == columnID {
+			return NewValidation("cannot move tasks to the same column being deleted")
+		}
 		// Validate destination column exists in the same board.
+		var toStatus string
 		found := false
 		for _, c := range columns {
 			if c.ID == moveTasksTo {
 				found = true
+				toStatus = strings.ToLower(c.Name)
 				break
 			}
 		}
 		if !found {
 			return NewNotFound("column", moveTasksTo)
 		}
-		if err := rt.ColumnDeleteService.ReassignTasks(ctx, workspaceID, columnID, moveTasksTo); err != nil {
+		if err := rt.ColumnDeleteService.ReassignTasks(ctx, workspaceID, columnID, moveTasksTo, toStatus); err != nil {
 			return err
 		}
 	}
@@ -421,11 +427,7 @@ func runColumnDeleteWithStore(cmd *cobra.Command, ns Namespace, store *state.Sto
 		})
 	}
 
-	_, _ = cmd.OutOrStdout().Write([]byte("column deleted\n"))
-	return RenderKV(cmd.OutOrStdout(), map[string]string{
-		"ID":     columnID,
-		"Status": "deleted",
-	})
+	return RenderDeleteResult(cmd.OutOrStdout(), "column", columnID)
 }
 
 func newColumnGetCommand() *cobra.Command {

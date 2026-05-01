@@ -217,6 +217,61 @@ func TestStore_SanitizeNamespace_ClearsTUIState(t *testing.T) {
 	assert.Equal(t, "board-2", ts.LastBoardByWorkspace["ws-2"])
 }
 
+func TestStore_SanitizeBoard_RemovesCLIContext(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.SetCLIContext("ns-1", CLIContext{WorkspaceID: "ws-1", BoardID: "board-1"})
+	require.NoError(t, err)
+
+	err = s.SanitizeBoard("ns-1", "board-1")
+	require.NoError(t, err)
+
+	ctx, err := s.GetCLIContext("ns-1")
+	require.NoError(t, err)
+	assert.Equal(t, "ws-1", ctx.WorkspaceID)
+	assert.Empty(t, ctx.BoardID)
+}
+
+func TestStore_SanitizeBoard_RemovesTUIState(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.SetTUIState("ns-1", TUIState{
+		LastBoardByWorkspace: map[string]string{"ws-1": "board-1", "ws-2": "board-2"},
+	})
+	require.NoError(t, err)
+
+	err = s.SanitizeBoard("ns-1", "board-1")
+	require.NoError(t, err)
+
+	ts, err := s.GetTUIState("ns-1")
+	require.NoError(t, err)
+	assert.NotContains(t, ts.LastBoardByWorkspace, "ws-1")
+	assert.Equal(t, "board-2", ts.LastBoardByWorkspace["ws-2"])
+}
+
+func TestStore_SanitizeBoard_PreservesUnrelatedEntries(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.SetCLIContext("ns-1", CLIContext{WorkspaceID: "ws-1", BoardID: "board-1"})
+	require.NoError(t, err)
+	err = s.SetTUIState("ns-1", TUIState{
+		LastBoardByWorkspace: map[string]string{"ws-1": "board-1", "ws-2": "board-2"},
+	})
+	require.NoError(t, err)
+
+	err = s.SanitizeBoard("ns-1", "board-3")
+	require.NoError(t, err)
+
+	ctx, err := s.GetCLIContext("ns-1")
+	require.NoError(t, err)
+	assert.Equal(t, "board-1", ctx.BoardID)
+
+	ts, err := s.GetTUIState("ns-1")
+	require.NoError(t, err)
+	assert.Equal(t, "board-1", ts.LastBoardByWorkspace["ws-1"])
+	assert.Equal(t, "board-2", ts.LastBoardByWorkspace["ws-2"])
+}
+
 func TestStore_SanitizeNamespace_MissingNamespace(t *testing.T) {
 	s := newTestStore(t)
 

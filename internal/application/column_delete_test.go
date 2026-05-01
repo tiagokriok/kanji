@@ -65,13 +65,15 @@ func TestColumnDeleteService_ReassignTasks(t *testing.T) {
 		NewTaskFlow(repositories.NewTaskRepository(s)),
 	)
 
-	err := svc.ReassignTasks(ctx, workspaceID, colIDs[0], colIDs[1])
+	err := svc.ReassignTasks(ctx, workspaceID, colIDs[0], colIDs[1], "doing")
 	require.NoError(t, err)
 
 	task, err := q.GetTask(ctx, taskID)
 	require.NoError(t, err)
 	require.True(t, task.ColumnID.Valid)
 	assert.Equal(t, colIDs[1], task.ColumnID.String)
+	require.True(t, task.Status.Valid)
+	assert.Equal(t, "doing", task.Status.String)
 }
 
 func TestColumnDeleteService_ReassignTasks_EmptyIDs(t *testing.T) {
@@ -84,13 +86,17 @@ func TestColumnDeleteService_ReassignTasks_EmptyIDs(t *testing.T) {
 		NewTaskFlow(repositories.NewTaskRepository(s)),
 	)
 
-	err := svc.ReassignTasks(ctx, "ws-test", "", "col-2")
+	err := svc.ReassignTasks(ctx, "ws-test", "", "col-2", "todo")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "from column id is required")
 
-	err = svc.ReassignTasks(ctx, "ws-test", "col-1", "")
+	err = svc.ReassignTasks(ctx, "ws-test", "col-1", "", "todo")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "to column id is required")
+
+	err = svc.ReassignTasks(ctx, "ws-test", "col-1", "col-2", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "destination column status cannot be empty")
 }
 
 func TestColumnDeleteService_DeleteColumn(t *testing.T) {

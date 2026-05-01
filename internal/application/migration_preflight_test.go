@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"testing"
 
@@ -22,7 +21,7 @@ func TestPreflightMigrations_Clean(t *testing.T) {
 		},
 	}
 
-	err := PreflightMigrations(context.Background(), &sql.DB{}, repo)
+	err := PreflightMigrations(context.Background(), repo)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -36,7 +35,7 @@ func TestPreflightMigrations_DuplicateWorkspace(t *testing.T) {
 		},
 	}
 
-	err := PreflightMigrations(context.Background(), &sql.DB{}, repo)
+	err := PreflightMigrations(context.Background(), repo)
 	if err == nil {
 		t.Fatal("expected error for duplicate workspace names, got nil")
 	}
@@ -59,7 +58,7 @@ func TestPreflightMigrations_DuplicateBoard(t *testing.T) {
 		},
 	}
 
-	err := PreflightMigrations(context.Background(), &sql.DB{}, repo)
+	err := PreflightMigrations(context.Background(), repo)
 	if err == nil {
 		t.Fatal("expected error for duplicate board names, got nil")
 	}
@@ -80,7 +79,7 @@ func TestPreflightMigrations_DuplicateColumn(t *testing.T) {
 		},
 	}
 
-	err := PreflightMigrations(context.Background(), &sql.DB{}, repo)
+	err := PreflightMigrations(context.Background(), repo)
 	if err == nil {
 		t.Fatal("expected error for duplicate column names, got nil")
 	}
@@ -103,7 +102,7 @@ func TestPreflightMigrations_MultipleIssues(t *testing.T) {
 		},
 	}
 
-	err := PreflightMigrations(context.Background(), &sql.DB{}, repo)
+	err := PreflightMigrations(context.Background(), repo)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

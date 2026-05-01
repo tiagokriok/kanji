@@ -558,7 +558,7 @@ func TestBoardDelete_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	assert.Contains(t, output, "board deleted")
+	assert.Contains(t, output, "Board deleted")
 
 	ctx, err := store.GetCLIContext("test-ns")
 	require.NoError(t, err)

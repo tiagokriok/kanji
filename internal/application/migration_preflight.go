@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -12,7 +11,7 @@ import (
 // PreflightMigrations runs duplicate-name diagnostics before applying
 // uniqueness migrations. If any duplicates are found it returns an error
 // listing each conflict with an actionable message.
-func PreflightMigrations(ctx context.Context, db *sql.DB, setupRepo domain.SetupRepository) error {
+func PreflightMigrations(ctx context.Context, setupRepo domain.SetupRepository) error {
 	var messages []string
 
 	wsDups, err := FindDuplicateWorkspaceNames(ctx, setupRepo)

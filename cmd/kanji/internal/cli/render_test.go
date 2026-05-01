@@ -213,7 +213,7 @@ func TestRenderDeleteResult(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	assert.Contains(t, output, "workspace deleted")
+	assert.Contains(t, output, "Workspace deleted")
 	assert.Contains(t, output, "ID:")
 	assert.Contains(t, output, "ws-1")
 }

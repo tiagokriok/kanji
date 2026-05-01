@@ -349,18 +349,7 @@ func runBoardDeleteWithStore(cmd *cobra.Command, ns Namespace, store *state.Stor
 		return err
 	}
 
-	if err := store.ClearBoard(ns.Key); err != nil {
-		return err
-	}
-
-	ts, err := store.GetTUIState(ns.Key)
-	if err != nil {
-		return err
-	}
-	if ts.LastBoardByWorkspace != nil {
-		delete(ts.LastBoardByWorkspace, workspaceID)
-	}
-	if err := store.SetTUIState(ns.Key, ts); err != nil {
+	if err := store.SanitizeBoard(ns.Key, boardID); err != nil {
 		return err
 	}
 

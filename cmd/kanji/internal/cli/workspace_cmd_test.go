@@ -411,7 +411,7 @@ func TestWorkspaceDelete_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	assert.Contains(t, output, "workspace deleted")
+	assert.Contains(t, output, "Workspace deleted")
 
 	remaining, err := rt.ContextService.ListWorkspaces(context.Background())
 	require.NoError(t, err)
