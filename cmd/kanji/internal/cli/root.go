@@ -1,0 +1,31 @@
+package cli
+
+import (
+	"github.com/spf13/cobra"
+)
+
+func NewRootCommand() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "kanji",
+		Short: "kanji - task management CLI and TUI",
+		Long: `kanji is a CLI-first task management tool with an optional TUI.
+
+Before using resource commands, bootstrap the system:
+  kanji data bootstrap
+
+To launch the TUI:
+  kanji tui
+
+Use "kanji help" for available commands.
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+
+	return root
+}
+
+func Execute() error {
+	return NewRootCommand().Execute()
+}
