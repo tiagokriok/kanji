@@ -27,6 +27,8 @@ Use "kanji help" for available commands.
 	root.PersistentFlags().Bool("json", false, "output in JSON format")
 	root.PersistentFlags().Bool("verbose", false, "enable verbose output")
 
+	root.AddCommand(newDataCommand())
+
 	return root
 }
 
