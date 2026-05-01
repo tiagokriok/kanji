@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tiagokriok/kanji/internal/application"
+	"github.com/tiagokriok/kanji/internal/domain"
 )
 
 func newTaskCommand() *cobra.Command {
@@ -15,6 +16,7 @@ func newTaskCommand() *cobra.Command {
 		Short: "Task operations",
 	}
 	t.AddCommand(newTaskListCommand())
+	t.AddCommand(newTaskGetCommand())
 	return t
 }
 
@@ -38,6 +40,144 @@ func newTaskListCommand() *cobra.Command {
 	cmd.Flags().String("column", "", "column ID filter")
 	cmd.Flags().Int("due-soon", 0, "due within N days")
 	return cmd
+}
+
+func newTaskGetCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "get",
+		Short: "Get a task by ID or title",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runTaskGet(cmd, ns)
+		},
+	}
+	cmd.Flags().String("task-id", "", "task ID")
+	cmd.Flags().String("task", "", "task title")
+	cmd.Flags().String("workspace-id", "", "workspace ID (required for title resolution)")
+	cmd.Flags().String("workspace", "", "workspace name (required for title resolution)")
+	cmd.Flags().Bool("include-comments", false, "include comments")
+	return cmd
+}
+
+func runTaskGet(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve task.
+	var task domain.Task
+	if cmd.Flags().Changed("task-id") {
+		id, _ := cmd.Flags().GetString("task-id")
+		// Search across all workspaces.
+		workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, ws := range workspaces {
+			filters := application.ListTaskFilters{WorkspaceID: ws.ID}
+			tasks, err := rt.TaskFlow.ListTasks(ctx, filters)
+			if err != nil {
+				return err
+			}
+			for _, t := range tasks {
+				if t.ID == id {
+					task = t
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("task", id)
+		}
+	} else if cmd.Flags().Changed("task") {
+		title, _ := cmd.Flags().GetString("task")
+		// Need workspace scope.
+		var workspaceID string
+		if cmd.Flags().Changed("workspace-id") {
+			workspaceID, _ = cmd.Flags().GetString("workspace-id")
+		} else if cmd.Flags().Changed("workspace") {
+			name, _ := cmd.Flags().GetString("workspace")
+			workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+			if err != nil {
+				return err
+			}
+			found := false
+			for _, ws := range workspaces {
+				if ExactMatch(ws.Name, name) {
+					workspaceID = ws.ID
+					found = true
+					break
+				}
+			}
+			if !found {
+				return NewNotFound("workspace", name)
+			}
+		} else {
+			return NewValidation("workspace scope required for task title resolution")
+		}
+
+		filters := application.ListTaskFilters{WorkspaceID: workspaceID}
+		tasks, err := rt.TaskFlow.ListTasks(ctx, filters)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, t := range tasks {
+			if ExactMatch(t.Title, title) {
+				task = t
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("task", title)
+		}
+	} else {
+		return NewValidation("task-id or task is required")
+	}
+
+	if cfg.JSON {
+		payload := map[string]interface{}{
+			"id":       task.ID,
+			"title":    task.Title,
+			"priority": task.Priority,
+		}
+		if task.Status != nil {
+			payload["status"] = *task.Status
+		}
+		return RenderWrappedJSON(cmd.OutOrStdout(), "task", payload)
+	}
+
+	pairs := map[string]string{
+		"ID":       task.ID,
+		"Title":    task.Title,
+		"Priority": strconv.Itoa(task.Priority),
+	}
+	if task.Status != nil {
+		pairs["Status"] = *task.Status
+	}
+	return RenderKV(cmd.OutOrStdout(), pairs)
 }
 
 func runTaskList(cmd *cobra.Command, ns Namespace) error {
