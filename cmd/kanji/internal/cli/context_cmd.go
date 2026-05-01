@@ -23,6 +23,7 @@ func newContextCommand() *cobra.Command {
 		Short: "Manage CLI context",
 	}
 	ctx.AddCommand(newContextShowCommand())
+	ctx.AddCommand(newContextClearCommand())
 	return ctx
 }
 
@@ -80,6 +81,47 @@ func renderContextHuman(w io.Writer, ns Namespace, cliCtx state.CLIContext, tuiS
 	} else {
 		fmt.Fprintln(w, "  (none)")
 	}
+	return nil
+}
+
+func newContextClearCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "clear",
+		Short: "Clear explicit CLI context for the current namespace",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			store, err := defaultStateStore()
+			if err != nil {
+				return err
+			}
+			return runContextClear(cmd, store)
+		},
+	}
+}
+
+func runContextClear(cmd *cobra.Command, store *state.Store) error {
+	ns, err := ResolveNamespace()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	if err := store.ClearCLIContext(ns.Key); err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		payload := map[string]string{
+			"namespace": ns.Key,
+			"status":    "cleared",
+		}
+		return RenderWrappedJSON(cmd.OutOrStdout(), "context", payload)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Cleared CLI context for namespace: %s\n", ns.Key)
 	return nil
 }
 
