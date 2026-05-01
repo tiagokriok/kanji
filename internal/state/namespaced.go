@@ -134,6 +134,46 @@ func (s *Store) ClearCLIContext(namespace string) error {
 	return s.Save(st)
 }
 
+// SanitizeNamespace removes all references to the given workspaceID from
+// the namespace's CLI context and TUI state.
+func (s *Store) SanitizeNamespace(namespace string, workspaceID string) error {
+	st, err := s.Load()
+	if err != nil {
+		return err
+	}
+
+	ns := st.Namespaces[namespace]
+
+	if ns.CLIContext.WorkspaceID == workspaceID {
+		ns.CLIContext = CLIContext{}
+	}
+
+	if ns.TUIState.LastWorkspaceID == workspaceID {
+		ns.TUIState.LastWorkspaceID = ""
+	}
+
+	if ns.TUIState.LastBoardByWorkspace != nil {
+		delete(ns.TUIState.LastBoardByWorkspace, workspaceID)
+	}
+
+	st.Namespaces[namespace] = ns
+	return s.Save(st)
+}
+
+// ClearBoard removes the board ID from the namespace's CLI context while
+// preserving the workspace ID.
+func (s *Store) ClearBoard(namespace string) error {
+	st, err := s.Load()
+	if err != nil {
+		return err
+	}
+
+	ns := st.Namespaces[namespace]
+	ns.CLIContext.BoardID = ""
+	st.Namespaces[namespace] = ns
+	return s.Save(st)
+}
+
 // GetTUIState returns the TUI state for the given namespace.
 func (s *Store) GetTUIState(namespace string) (TUIState, error) {
 	st, err := s.Load()

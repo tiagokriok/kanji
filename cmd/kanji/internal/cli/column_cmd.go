@@ -20,6 +20,7 @@ func newColumnCommand() *cobra.Command {
 	c.AddCommand(newColumnCreateCommand())
 	c.AddCommand(newColumnUpdateCommand())
 	c.AddCommand(newColumnReorderCommand())
+	c.AddCommand(newColumnDeleteCommand())
 	return c
 }
 
@@ -75,6 +76,32 @@ func newColumnReorderCommand() *cobra.Command {
 	cmd.Flags().StringArray("column-id", nil, "column ID (repeat for order)")
 	cmd.Flags().String("board-id", "", "board ID")
 	cmd.Flags().String("board", "", "board name")
+	return cmd
+}
+
+func newColumnDeleteCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete",
+		Short: "Delete a column",
+		Long: `Delete a column. If the column contains tasks, you must reassign them first
+using --move-tasks-to. Requires --yes for confirmation.`,
+		Example: `  # Delete empty column
+  kanji column delete --column-id <id> --yes
+
+  # Delete and move tasks
+  kanji column delete --column-id <id> --move-tasks-to <other-id> --yes`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runColumnDelete(cmd, ns)
+		},
+	}
+	cmd.Flags().String("column-id", "", "column ID")
+	cmd.Flags().String("column", "", "column name")
+	cmd.Flags().String("move-tasks-to", "", "move tasks to this column ID before deleting")
+	cmd.Flags().Bool("yes", false, "confirm deletion")
 	return cmd
 }
 
@@ -274,6 +301,131 @@ func runColumnReorderWithStore(cmd *cobra.Command, ns Namespace, store *state.St
 
 	fmt.Fprintln(cmd.OutOrStdout(), "Columns reordered")
 	return nil
+}
+
+func runColumnDelete(cmd *cobra.Command, ns Namespace) error {
+	store, err := defaultStateStore()
+	if err != nil {
+		return err
+	}
+	return runColumnDeleteWithStore(cmd, ns, store)
+}
+
+func runColumnDeleteWithStore(cmd *cobra.Command, ns Namespace, store *state.Store) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve workspace scope.
+	workspaceID, _, err := ResolveWorkspaceScope(cmd, rt, store, ns)
+	if err != nil {
+		return err
+	}
+
+	// Resolve board scope.
+	boardID, _, err := ResolveBoardScope(cmd, rt, store, ns, workspaceID)
+	if err != nil {
+		return err
+	}
+
+	// Resolve column ID.
+	var columnID string
+	columns, err := rt.ContextService.ListColumns(ctx, boardID)
+	if err != nil {
+		return err
+	}
+	if cmd.Flags().Changed("column-id") {
+		id, _ := cmd.Flags().GetString("column-id")
+		found := false
+		for _, c := range columns {
+			if c.ID == id {
+				columnID = c.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("column", id)
+		}
+	} else if cmd.Flags().Changed("column") {
+		name, _ := cmd.Flags().GetString("column")
+		var matches []domain.Column
+		for _, c := range columns {
+			if ExactMatch(c.Name, name) {
+				matches = append(matches, c)
+			}
+		}
+		if len(matches) == 0 {
+			return NewNotFound("column", name)
+		}
+		if len(matches) > 1 {
+			return NewAmbiguous("column", name, len(matches))
+		}
+		columnID = matches[0].ID
+	} else {
+		return NewValidation("column-id or column is required")
+	}
+
+	count, err := rt.ColumnDeleteService.ColumnTaskCount(ctx, workspaceID, columnID)
+	if err != nil {
+		return err
+	}
+
+	moveTasksTo, _ := cmd.Flags().GetString("move-tasks-to")
+	if count > 0 && moveTasksTo == "" {
+		return NewValidation(fmt.Sprintf("column has %d tasks: use --move-tasks-to to reassign before deleting", count))
+	}
+
+	if moveTasksTo != "" {
+		// Validate destination column exists in the same board.
+		found := false
+		for _, c := range columns {
+			if c.ID == moveTasksTo {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("column", moveTasksTo)
+		}
+		if err := rt.ColumnDeleteService.ReassignTasks(ctx, workspaceID, columnID, moveTasksTo); err != nil {
+			return err
+		}
+	}
+
+	if err := RequireConfirmation(cmd, "yes"); err != nil {
+		return err
+	}
+
+	if err := rt.ColumnDeleteService.DeleteColumn(ctx, columnID); err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		return RenderWrappedJSON(cmd.OutOrStdout(), "column", map[string]interface{}{
+			"id":     columnID,
+			"status": "deleted",
+		})
+	}
+
+	_, _ = cmd.OutOrStdout().Write([]byte("column deleted\n"))
+	return RenderKV(cmd.OutOrStdout(), map[string]string{
+		"ID":     columnID,
+		"Status": "deleted",
+	})
 }
 
 func newColumnGetCommand() *cobra.Command {

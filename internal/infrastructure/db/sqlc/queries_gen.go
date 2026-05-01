@@ -636,3 +636,116 @@ func (q *Queries) UpdateColumnWIPLimit(ctx context.Context, arg UpdateColumnWIPL
 	_, err := q.db.ExecContext(ctx, updateColumnWIPLimit, arg.WipLimit, arg.ID)
 	return err
 }
+
+const updateComment = `-- name: UpdateComment :exec
+UPDATE comments SET body_md = ? WHERE id = ?
+`
+
+type UpdateCommentParams struct {
+	BodyMd string
+	ID     string
+}
+
+func (q *Queries) UpdateComment(ctx context.Context, arg UpdateCommentParams) error {
+	_, err := q.db.ExecContext(ctx, updateComment, arg.BodyMd, arg.ID)
+	return err
+}
+
+const deleteComment = `-- name: DeleteComment :exec
+DELETE FROM comments WHERE id = ?
+`
+
+func (q *Queries) DeleteComment(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteComment, id)
+	return err
+}
+
+const deleteCommentsByWorkspace = `-- name: DeleteCommentsByWorkspace :exec
+DELETE FROM comments WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id = ?)
+`
+
+func (q *Queries) DeleteCommentsByWorkspace(ctx context.Context, workspaceID string) error {
+	_, err := q.db.ExecContext(ctx, deleteCommentsByWorkspace, workspaceID)
+	return err
+}
+
+const deleteTasksByWorkspace = `-- name: DeleteTasksByWorkspace :exec
+DELETE FROM tasks WHERE workspace_id = ?
+`
+
+func (q *Queries) DeleteTasksByWorkspace(ctx context.Context, workspaceID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTasksByWorkspace, workspaceID)
+	return err
+}
+
+const deleteColumnsByWorkspace = `-- name: DeleteColumnsByWorkspace :exec
+DELETE FROM columns WHERE board_id IN (SELECT id FROM boards WHERE workspace_id = ?)
+`
+
+func (q *Queries) DeleteColumnsByWorkspace(ctx context.Context, workspaceID string) error {
+	_, err := q.db.ExecContext(ctx, deleteColumnsByWorkspace, workspaceID)
+	return err
+}
+
+const deleteBoardsByWorkspace = `-- name: DeleteBoardsByWorkspace :exec
+DELETE FROM boards WHERE workspace_id = ?
+`
+
+func (q *Queries) DeleteBoardsByWorkspace(ctx context.Context, workspaceID string) error {
+	_, err := q.db.ExecContext(ctx, deleteBoardsByWorkspace, workspaceID)
+	return err
+}
+
+const deleteWorkspace = `-- name: DeleteWorkspace :exec
+DELETE FROM workspaces WHERE id = ?
+`
+
+func (q *Queries) DeleteWorkspace(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteWorkspace, id)
+	return err
+}
+
+const deleteBoard = `-- name: DeleteBoard :exec
+DELETE FROM boards WHERE id = ?
+`
+
+func (q *Queries) DeleteBoard(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteBoard, id)
+	return err
+}
+
+const deleteColumn = `-- name: DeleteColumn :exec
+DELETE FROM columns WHERE id = ?
+`
+
+func (q *Queries) DeleteColumn(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteColumn, id)
+	return err
+}
+
+const deleteCommentsByBoard = `-- name: DeleteCommentsByBoard :exec
+DELETE FROM comments WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?)
+`
+
+func (q *Queries) DeleteCommentsByBoard(ctx context.Context, boardID string) error {
+	_, err := q.db.ExecContext(ctx, deleteCommentsByBoard, boardID)
+	return err
+}
+
+const deleteTasksByBoard = `-- name: DeleteTasksByBoard :exec
+DELETE FROM tasks WHERE board_id = ?
+`
+
+func (q *Queries) DeleteTasksByBoard(ctx context.Context, boardID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTasksByBoard, boardID)
+	return err
+}
+
+const deleteColumnsByBoard = `-- name: DeleteColumnsByBoard :exec
+DELETE FROM columns WHERE board_id = ?
+`
+
+func (q *Queries) DeleteColumnsByBoard(ctx context.Context, boardID string) error {
+	_, err := q.db.ExecContext(ctx, deleteColumnsByBoard, boardID)
+	return err
+}

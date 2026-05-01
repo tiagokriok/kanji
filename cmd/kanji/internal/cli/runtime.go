@@ -13,13 +13,16 @@ import (
 // Runtime holds the initialized infrastructure and application services
 // for a single CLI command invocation.
 type Runtime struct {
-	DB               *db.SQLiteAdapter
-	Store            store.Store
-	BootstrapService *application.BootstrapService
-	TaskService      *application.TaskService
-	TaskFlow         *application.TaskFlow
-	CommentService   *application.CommentService
-	ContextService   *application.ContextService
+	DB                     *db.SQLiteAdapter
+	Store                  store.Store
+	BootstrapService       *application.BootstrapService
+	TaskService            *application.TaskService
+	TaskFlow               *application.TaskFlow
+	CommentService         *application.CommentService
+	ContextService         *application.ContextService
+	BoardDeleteService     *application.BoardDeleteService
+	ColumnDeleteService    *application.ColumnDeleteService
+	WorkspaceDeleteService *application.WorkspaceDeleteService
 }
 
 // Close releases the database connection.
@@ -51,13 +54,16 @@ func NewRuntime(ctx context.Context, cfg RuntimeConfig) (*Runtime, error) {
 	commentRepo := repositories.NewCommentRepository(s)
 
 	rt := &Runtime{
-		DB:               adapter,
-		Store:            s,
-		BootstrapService: application.NewBootstrapService(setupRepo),
-		TaskService:      application.NewTaskService(taskRepo),
-		TaskFlow:         application.NewTaskFlow(taskRepo),
-		CommentService:   application.NewCommentService(commentRepo),
-		ContextService:   application.NewContextService(setupRepo),
+		DB:                     adapter,
+		Store:                  s,
+		BootstrapService:       application.NewBootstrapService(setupRepo),
+		TaskService:            application.NewTaskService(taskRepo),
+		TaskFlow:               application.NewTaskFlow(taskRepo),
+		CommentService:         application.NewCommentService(commentRepo),
+		ContextService:         application.NewContextService(setupRepo),
+		BoardDeleteService:     application.NewBoardDeleteService(setupRepo, taskRepo, commentRepo),
+		ColumnDeleteService:    application.NewColumnDeleteService(setupRepo, taskRepo, application.NewTaskFlow(taskRepo)),
+		WorkspaceDeleteService: application.NewWorkspaceDeleteService(setupRepo, taskRepo, commentRepo),
 	}
 
 	return rt, nil

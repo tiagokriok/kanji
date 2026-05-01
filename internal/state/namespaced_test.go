@@ -167,3 +167,59 @@ func TestStore_DefaultStorePath(t *testing.T) {
 	assert.Contains(t, path, "kanji")
 	assert.Contains(t, path, "namespaced_state.json")
 }
+
+func TestStore_SanitizeNamespace_ClearsCLIContext(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.SetCLIContext("ns-1", CLIContext{WorkspaceID: "ws-1", BoardID: "board-1"})
+	require.NoError(t, err)
+
+	err = s.SanitizeNamespace("ns-1", "ws-1")
+	require.NoError(t, err)
+
+	ctx, err := s.GetCLIContext("ns-1")
+	require.NoError(t, err)
+	assert.Empty(t, ctx.WorkspaceID)
+	assert.Empty(t, ctx.BoardID)
+}
+
+func TestStore_SanitizeNamespace_PreservesOtherWorkspace(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.SetCLIContext("ns-1", CLIContext{WorkspaceID: "ws-2", BoardID: "board-2"})
+	require.NoError(t, err)
+
+	err = s.SanitizeNamespace("ns-1", "ws-1")
+	require.NoError(t, err)
+
+	ctx, err := s.GetCLIContext("ns-1")
+	require.NoError(t, err)
+	assert.Equal(t, "ws-2", ctx.WorkspaceID)
+	assert.Equal(t, "board-2", ctx.BoardID)
+}
+
+func TestStore_SanitizeNamespace_ClearsTUIState(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.SetTUIState("ns-1", TUIState{
+		LastWorkspaceID:      "ws-1",
+		LastBoardByWorkspace: map[string]string{"ws-1": "board-1", "ws-2": "board-2"},
+	})
+	require.NoError(t, err)
+
+	err = s.SanitizeNamespace("ns-1", "ws-1")
+	require.NoError(t, err)
+
+	ts, err := s.GetTUIState("ns-1")
+	require.NoError(t, err)
+	assert.Empty(t, ts.LastWorkspaceID)
+	assert.NotContains(t, ts.LastBoardByWorkspace, "ws-1")
+	assert.Equal(t, "board-2", ts.LastBoardByWorkspace["ws-2"])
+}
+
+func TestStore_SanitizeNamespace_MissingNamespace(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.SanitizeNamespace("nonexistent", "ws-1")
+	require.NoError(t, err)
+}

@@ -20,6 +20,7 @@ func newBoardCommand() *cobra.Command {
 	b.AddCommand(newBoardGetCommand())
 	b.AddCommand(newBoardCreateCommand())
 	b.AddCommand(newBoardUpdateCommand())
+	b.AddCommand(newBoardDeleteCommand())
 	return b
 }
 
@@ -96,6 +97,37 @@ func newBoardUpdateCommand() *cobra.Command {
 	cmd.Flags().String("workspace-id", "", "workspace ID (required for name resolution)")
 	cmd.Flags().String("workspace", "", "workspace name (required for name resolution)")
 	cmd.Flags().String("name", "", "new board name (required)")
+	return cmd
+}
+
+func newBoardDeleteCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete",
+		Short: "Delete a board and all its data",
+		Long: `Delete a board and all its data (columns, tasks, comments).
+
+This is a destructive operation. Use --dry-run to preview the impact.
+Requires both --yes and --cascade for actual deletion.`,
+		Example: `  # Preview impact
+  kanji board delete --board-id <id> --dry-run
+
+  # Delete with confirmation
+  kanji board delete --board-id <id> --yes --cascade`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runBoardDelete(cmd, ns)
+		},
+	}
+	cmd.Flags().String("board-id", "", "board ID")
+	cmd.Flags().String("board", "", "board name")
+	cmd.Flags().String("workspace-id", "", "workspace ID (required for name resolution)")
+	cmd.Flags().String("workspace", "", "workspace name (required for name resolution)")
+	cmd.Flags().Bool("yes", false, "confirm deletion")
+	cmd.Flags().Bool("cascade", false, "allow cascade deletion")
+	cmd.Flags().Bool("dry-run", false, "show impact without deleting")
 	return cmd
 }
 
@@ -249,6 +281,94 @@ func runBoardUpdateWithStore(cmd *cobra.Command, ns Namespace, store *state.Stor
 		"ID":   boardID,
 		"Name": name,
 	})
+}
+
+func runBoardDelete(cmd *cobra.Command, ns Namespace) error {
+	store, err := defaultStateStore()
+	if err != nil {
+		return err
+	}
+	return runBoardDeleteWithStore(cmd, ns, store)
+}
+
+func runBoardDeleteWithStore(cmd *cobra.Command, ns Namespace, store *state.Store) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve workspace scope.
+	workspaceID, _, err := ResolveWorkspaceScope(cmd, rt, store, ns)
+	if err != nil {
+		return err
+	}
+
+	// Resolve board scope.
+	boardID, _, err := ResolveBoardScope(cmd, rt, store, ns, workspaceID)
+	if err != nil {
+		return err
+	}
+
+	impact, err := rt.BoardDeleteService.BoardDeleteImpact(ctx, workspaceID, boardID)
+	if err != nil {
+		return err
+	}
+
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	if dryRun {
+		impactMap := map[string]int{
+			"columns":  impact.Columns,
+			"tasks":    impact.Tasks,
+			"comments": impact.Comments,
+		}
+		if cfg.JSON {
+			return RenderDryRunImpactJSON(cmd.OutOrStdout(), "board", impactMap)
+		}
+		return RenderDryRunImpact(cmd.OutOrStdout(), "board", impactMap)
+	}
+
+	cascade, _ := cmd.Flags().GetBool("cascade")
+	confirmed, _ := cmd.Flags().GetBool("yes")
+	if !cascade || !confirmed {
+		return NewValidation("deletion requires both --cascade and --yes")
+	}
+
+	if err := rt.BoardDeleteService.DeleteBoard(ctx, boardID); err != nil {
+		return err
+	}
+
+	if err := store.ClearBoard(ns.Key); err != nil {
+		return err
+	}
+
+	ts, err := store.GetTUIState(ns.Key)
+	if err != nil {
+		return err
+	}
+	if ts.LastBoardByWorkspace != nil {
+		delete(ts.LastBoardByWorkspace, workspaceID)
+	}
+	if err := store.SetTUIState(ns.Key, ts); err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		return RenderDeleteResultJSON(cmd.OutOrStdout(), "board", boardID, cascade)
+	}
+
+	return RenderDeleteResult(cmd.OutOrStdout(), "board", boardID)
 }
 
 func runBoardGet(cmd *cobra.Command, ns Namespace) error {

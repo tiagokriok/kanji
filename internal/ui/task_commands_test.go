@@ -67,6 +67,12 @@ func (r *fakeCommentRepoForCommands) Create(ctx context.Context, comment domain.
 func (r *fakeCommentRepoForCommands) ListByTask(ctx context.Context, taskID string) ([]domain.Comment, error) {
 	return nil, nil
 }
+func (r *fakeCommentRepoForCommands) Update(ctx context.Context, commentID string, bodyMD string) error {
+	return nil
+}
+func (r *fakeCommentRepoForCommands) Delete(ctx context.Context, commentID string) error {
+	return nil
+}
 
 // --- helpers ---
 

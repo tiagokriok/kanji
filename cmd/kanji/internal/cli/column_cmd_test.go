@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tiagokriok/kanji/internal/application"
 	"github.com/tiagokriok/kanji/internal/state"
 )
 
@@ -454,4 +455,234 @@ func TestColumnReorder_JSON(t *testing.T) {
 	output := buf.String()
 	assert.Contains(t, output, `"reorder"`)
 	assert.Contains(t, output, "board_id")
+}
+
+// -- Column Delete Tests --
+
+func TestColumnDelete_Success(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	rt2, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	columns, err := rt2.ContextService.ListColumns(context.Background(), setup.Board.ID)
+	require.NoError(t, err)
+	rt2.Close()
+
+	store := state.NewStore(dir + "/state.json")
+	require.NoError(t, store.SetCLIContext("test-ns", state.CLIContext{WorkspaceID: setup.Workspace.ID, BoardID: setup.Board.ID}))
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("column-id", columns[0].ID, "")
+	cmd.Flags().String("column", "", "")
+	cmd.Flags().String("move-tasks-to", "", "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--column-id", columns[0].ID, "--yes"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runColumnDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "column deleted")
+
+	rt3, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	remaining, err := rt3.ContextService.ListColumns(context.Background(), setup.Board.ID)
+	require.NoError(t, err)
+	rt3.Close()
+
+	assert.Len(t, remaining, 2)
+}
+
+func TestColumnDelete_WithTasksRequiresMove(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	rt2, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	columns, err := rt2.ContextService.ListColumns(context.Background(), setup.Board.ID)
+	require.NoError(t, err)
+
+	// Create a task in the first column.
+	_, err = rt2.TaskService.CreateTask(context.Background(), application.CreateTaskInput{
+		ProviderID:  setup.Provider.ID,
+		WorkspaceID: setup.Workspace.ID,
+		BoardID:     &setup.Board.ID,
+		ColumnID:    &columns[0].ID,
+		Title:       "Task in column",
+	})
+	require.NoError(t, err)
+	rt2.Close()
+
+	store := state.NewStore(dir + "/state.json")
+	require.NoError(t, store.SetCLIContext("test-ns", state.CLIContext{WorkspaceID: setup.Workspace.ID, BoardID: setup.Board.ID}))
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("column-id", columns[0].ID, "")
+	cmd.Flags().String("column", "", "")
+	cmd.Flags().String("move-tasks-to", "", "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--column-id", columns[0].ID, "--yes"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runColumnDeleteWithStore(cmd, ns, store)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "move-tasks-to")
+}
+
+func TestColumnDelete_WithReassign(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	rt2, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	columns, err := rt2.ContextService.ListColumns(context.Background(), setup.Board.ID)
+	require.NoError(t, err)
+
+	// Create a task in the first column.
+	task, err := rt2.TaskService.CreateTask(context.Background(), application.CreateTaskInput{
+		ProviderID:  setup.Provider.ID,
+		WorkspaceID: setup.Workspace.ID,
+		BoardID:     &setup.Board.ID,
+		ColumnID:    &columns[0].ID,
+		Title:       "Task to move",
+	})
+	require.NoError(t, err)
+	rt2.Close()
+
+	store := state.NewStore(dir + "/state.json")
+	require.NoError(t, store.SetCLIContext("test-ns", state.CLIContext{WorkspaceID: setup.Workspace.ID, BoardID: setup.Board.ID}))
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("column-id", columns[0].ID, "")
+	cmd.Flags().String("column", "", "")
+	cmd.Flags().String("move-tasks-to", columns[1].ID, "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--column-id", columns[0].ID, "--move-tasks-to", columns[1].ID, "--yes"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runColumnDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "column deleted")
+
+	rt3, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	remaining, err := rt3.ContextService.ListColumns(context.Background(), setup.Board.ID)
+	require.NoError(t, err)
+
+	// Verify task was moved.
+	tasks, err := rt3.TaskFlow.ListTasks(context.Background(), application.ListTaskFilters{
+		WorkspaceID: setup.Workspace.ID,
+		ColumnID:    columns[1].ID,
+	})
+	require.NoError(t, err)
+	rt3.Close()
+
+	assert.Len(t, remaining, 2)
+	assert.Len(t, tasks, 1)
+	assert.Equal(t, task.ID, tasks[0].ID)
+}
+
+func TestColumnDelete_RequiresYes(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	rt2, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	columns, err := rt2.ContextService.ListColumns(context.Background(), setup.Board.ID)
+	require.NoError(t, err)
+	rt2.Close()
+
+	store := state.NewStore(dir + "/state.json")
+	require.NoError(t, store.SetCLIContext("test-ns", state.CLIContext{WorkspaceID: setup.Workspace.ID, BoardID: setup.Board.ID}))
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("column-id", columns[0].ID, "")
+	cmd.Flags().String("column", "", "")
+	cmd.Flags().String("move-tasks-to", "", "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--column-id", columns[0].ID}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runColumnDeleteWithStore(cmd, ns, store)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "yes")
+}
+
+func TestColumnDelete_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	store := state.NewStore(dir + "/state.json")
+	require.NoError(t, store.SetCLIContext("test-ns", state.CLIContext{WorkspaceID: setup.Workspace.ID, BoardID: setup.Board.ID}))
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("column-id", "invalid-id", "")
+	cmd.Flags().String("column", "", "")
+	cmd.Flags().String("move-tasks-to", "", "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--column-id", "invalid-id", "--yes"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runColumnDeleteWithStore(cmd, ns, store)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
 }

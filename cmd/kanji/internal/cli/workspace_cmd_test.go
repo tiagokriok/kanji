@@ -292,3 +292,187 @@ func TestWorkspaceUpdate_NotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
+
+func TestWorkspaceDelete_DryRun(t *testing.T) {
+	rt, dir := setupBootstrappedRuntime(t)
+	defer rt.Close()
+
+	ws, err := rt.ContextService.ListWorkspaces(context.Background())
+	require.NoError(t, err)
+	require.Len(t, ws, 1)
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("workspace-id", "", "")
+	cmd.Flags().String("workspace", "", "")
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", filepath.Join(dir, "test.db"), "--workspace-id", ws[0].ID, "--dry-run"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runWorkspaceDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Dry-run")
+	assert.Contains(t, output, "boards")
+	assert.Contains(t, output, "columns")
+}
+
+func TestWorkspaceDelete_DryRun_JSON(t *testing.T) {
+	rt, dir := setupBootstrappedRuntime(t)
+	defer rt.Close()
+
+	ws, err := rt.ContextService.ListWorkspaces(context.Background())
+	require.NoError(t, err)
+	require.Len(t, ws, 1)
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("workspace-id", "", "")
+	cmd.Flags().String("workspace", "", "")
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("yes", false, "")
+	cmd.Flags().Bool("json", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", filepath.Join(dir, "test.db"), "--workspace-id", ws[0].ID, "--dry-run", "--json"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runWorkspaceDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "workspace")
+	assert.Contains(t, output, "dry_run")
+	assert.Contains(t, output, "impact")
+}
+
+func TestWorkspaceDelete_RequiresFlags(t *testing.T) {
+	rt, dir := setupBootstrappedRuntime(t)
+	defer rt.Close()
+
+	ws, err := rt.ContextService.ListWorkspaces(context.Background())
+	require.NoError(t, err)
+	require.Len(t, ws, 1)
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("workspace-id", "", "")
+	cmd.Flags().String("workspace", "", "")
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", filepath.Join(dir, "test.db"), "--workspace-id", ws[0].ID}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runWorkspaceDeleteWithStore(cmd, ns, store)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cascade")
+}
+
+func TestWorkspaceDelete_Success(t *testing.T) {
+	rt, dir := setupBootstrappedRuntime(t)
+	defer rt.Close()
+
+	ws, err := rt.ContextService.ListWorkspaces(context.Background())
+	require.NoError(t, err)
+	require.Len(t, ws, 1)
+
+	store := state.NewStore(dir + "/state.json")
+	err = store.SetCLIContext("test-ns", state.CLIContext{WorkspaceID: ws[0].ID, BoardID: "default-board"})
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("workspace-id", "", "")
+	cmd.Flags().String("workspace", "", "")
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", filepath.Join(dir, "test.db"), "--workspace-id", ws[0].ID, "--cascade", "--yes"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runWorkspaceDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "workspace deleted")
+
+	remaining, err := rt.ContextService.ListWorkspaces(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, remaining)
+
+	ctx, err := store.GetCLIContext("test-ns")
+	require.NoError(t, err)
+	assert.Empty(t, ctx.WorkspaceID)
+	assert.Empty(t, ctx.BoardID)
+}
+
+func TestWorkspaceDelete_Success_JSON(t *testing.T) {
+	rt, dir := setupBootstrappedRuntime(t)
+	defer rt.Close()
+
+	ws, err := rt.ContextService.ListWorkspaces(context.Background())
+	require.NoError(t, err)
+	require.Len(t, ws, 1)
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("workspace-id", "", "")
+	cmd.Flags().String("workspace", "", "")
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("yes", false, "")
+	cmd.Flags().Bool("json", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", filepath.Join(dir, "test.db"), "--workspace-id", ws[0].ID, "--cascade", "--yes", "--json"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runWorkspaceDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "deleted")
+	assert.Contains(t, output, ws[0].ID)
+}
+
+func TestWorkspaceDelete_NotFound(t *testing.T) {
+	rt, dir := setupBootstrappedRuntime(t)
+	defer rt.Close()
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("workspace-id", "", "")
+	cmd.Flags().String("workspace", "", "")
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("yes", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", filepath.Join(dir, "test.db"), "--workspace-id", "invalid-id", "--cascade", "--yes"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err := runWorkspaceDeleteWithStore(cmd, ns, store)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}

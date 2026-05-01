@@ -20,6 +20,8 @@ func newCommentCommand() *cobra.Command {
 	c.AddCommand(newCommentListCommand())
 	c.AddCommand(newCommentGetCommand())
 	c.AddCommand(newCommentCreateCommand())
+	c.AddCommand(newCommentUpdateCommand())
+	c.AddCommand(newCommentDeleteCommand())
 	return c
 }
 
@@ -39,6 +41,47 @@ func newCommentCreateCommand() *cobra.Command {
 	cmd.Flags().String("body", "", "comment body")
 	cmd.Flags().String("body-file", "", "path to file containing comment body (- for stdin)")
 	cmd.Flags().String("author", "", "comment author")
+	return cmd
+}
+
+func newCommentUpdateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Update a comment body",
+		Long: `Update a comment body. The body completely replaces the existing content.
+Supports inline text, file input, or stdin (-).`,
+		Example: `  kanji comment update --comment-id <id> --body "Updated comment"
+  kanji comment update --comment-id <id> --body-file comment.md`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runCommentUpdate(cmd, ns)
+		},
+	}
+	cmd.Flags().String("comment-id", "", "comment ID")
+	cmd.Flags().String("body", "", "new comment body")
+	cmd.Flags().String("body-file", "", "path to file containing comment body (- for stdin)")
+	return cmd
+}
+
+func newCommentDeleteCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "delete",
+		Short:   "Delete a comment",
+		Long:    `Delete a comment permanently. Requires --yes for confirmation.`,
+		Example: `  kanji comment delete --comment-id <id> --yes`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runCommentDelete(cmd, ns)
+		},
+	}
+	cmd.Flags().String("comment-id", "", "comment ID")
+	cmd.Flags().Bool("yes", false, "confirm deletion")
 	return cmd
 }
 
@@ -151,6 +194,94 @@ func newCommentGetCommand() *cobra.Command {
 	}
 	cmd.Flags().String("comment-id", "", "comment ID")
 	return cmd
+}
+
+func runCommentUpdate(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	var commentID string
+	if cmd.Flags().Changed("comment-id") {
+		commentID, _ = cmd.Flags().GetString("comment-id")
+	} else {
+		return NewValidation("comment-id is required")
+	}
+
+	body, err := ResolveTextInput(cmd, "body", "body-file", false, nil)
+	if err != nil {
+		return err
+	}
+
+	if err := rt.CommentService.UpdateComment(ctx, commentID, body); err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		return RenderWriteResultJSON(cmd.OutOrStdout(), "comment", map[string]interface{}{
+			"id":   commentID,
+			"body": body,
+		})
+	}
+
+	_, _ = cmd.OutOrStdout().Write([]byte("comment updated\n"))
+	return RenderKV(cmd.OutOrStdout(), map[string]string{
+		"ID":   commentID,
+		"Body": body,
+	})
+}
+
+func runCommentDelete(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	var commentID string
+	if cmd.Flags().Changed("comment-id") {
+		commentID, _ = cmd.Flags().GetString("comment-id")
+	} else {
+		return NewValidation("comment-id is required")
+	}
+
+	if err := RequireConfirmation(cmd, "yes"); err != nil {
+		return err
+	}
+
+	if err := rt.CommentService.DeleteComment(ctx, commentID); err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		return RenderDeleteResultJSON(cmd.OutOrStdout(), "comment", commentID, false)
+	}
+
+	return RenderDeleteResult(cmd.OutOrStdout(), "comment", commentID)
 }
 
 func runCommentGet(cmd *cobra.Command, ns Namespace) error {

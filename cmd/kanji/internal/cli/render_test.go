@@ -171,3 +171,62 @@ func TestRenderWriteResolved_Empty(t *testing.T) {
 	output := buf.String()
 	assert.Empty(t, output)
 }
+
+func TestRenderDryRunImpact(t *testing.T) {
+	buf := new(strings.Builder)
+	err := RenderDryRunImpact(buf, "workspace", map[string]int{
+		"boards":   3,
+		"columns":  5,
+		"tasks":    12,
+		"comments": 7,
+	})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Dry-run: workspace delete impact")
+	assert.Contains(t, output, "boards:")
+	assert.Contains(t, output, "3")
+	assert.Contains(t, output, "comments:")
+	assert.Contains(t, output, "7")
+}
+
+func TestRenderDryRunImpactJSON(t *testing.T) {
+	buf := new(strings.Builder)
+	err := RenderDryRunImpactJSON(buf, "board", map[string]int{
+		"columns":  2,
+		"tasks":    5,
+		"comments": 1,
+	})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, `"board"`)
+	assert.Contains(t, output, `"dry_run"`)
+	assert.Contains(t, output, `"impact"`)
+	assert.Contains(t, output, `"columns"`)
+	assert.Contains(t, output, "2")
+}
+
+func TestRenderDeleteResult(t *testing.T) {
+	buf := new(strings.Builder)
+	err := RenderDeleteResult(buf, "workspace", "ws-1")
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "workspace deleted")
+	assert.Contains(t, output, "ID:")
+	assert.Contains(t, output, "ws-1")
+}
+
+func TestRenderDeleteResultJSON(t *testing.T) {
+	buf := new(strings.Builder)
+	err := RenderDeleteResultJSON(buf, "board", "bd-1", true)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, `"board"`)
+	assert.Contains(t, output, `"id"`)
+	assert.Contains(t, output, "bd-1")
+	assert.Contains(t, output, `"deleted"`)
+	assert.Contains(t, output, `"cascade"`)
+}

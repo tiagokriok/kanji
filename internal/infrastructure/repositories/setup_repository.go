@@ -88,6 +88,33 @@ func (r *SetupRepository) RenameWorkspace(ctx context.Context, workspaceID, name
 	})
 }
 
+func (r *SetupRepository) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return fmt.Errorf("workspace id is required")
+	}
+
+	return r.store.Write(ctx, "delete workspace", func(tx store.Tx) error {
+		qtx := tx.Queries()
+		if err := qtx.DeleteCommentsByWorkspace(ctx, workspaceID); err != nil {
+			return fmt.Errorf("delete comments: %w", err)
+		}
+		if err := qtx.DeleteTasksByWorkspace(ctx, workspaceID); err != nil {
+			return fmt.Errorf("delete tasks: %w", err)
+		}
+		if err := qtx.DeleteColumnsByWorkspace(ctx, workspaceID); err != nil {
+			return fmt.Errorf("delete columns: %w", err)
+		}
+		if err := qtx.DeleteBoardsByWorkspace(ctx, workspaceID); err != nil {
+			return fmt.Errorf("delete boards: %w", err)
+		}
+		if err := qtx.DeleteWorkspace(ctx, workspaceID); err != nil {
+			return fmt.Errorf("delete workspace: %w", err)
+		}
+		return nil
+	})
+}
+
 func (r *SetupRepository) ListBoards(ctx context.Context, workspaceID string) ([]domain.Board, error) {
 	return queryListBoards(ctx, r.store.Queries(), workspaceID)
 }
@@ -121,6 +148,30 @@ func (r *SetupRepository) RenameBoard(ctx context.Context, boardID, name string)
 			Name: name,
 			ID:   boardID,
 		})
+	})
+}
+
+func (r *SetupRepository) DeleteBoard(ctx context.Context, boardID string) error {
+	boardID = strings.TrimSpace(boardID)
+	if boardID == "" {
+		return fmt.Errorf("board id is required")
+	}
+
+	return r.store.Write(ctx, "delete board", func(tx store.Tx) error {
+		qtx := tx.Queries()
+		if err := qtx.DeleteCommentsByBoard(ctx, boardID); err != nil {
+			return fmt.Errorf("delete comments: %w", err)
+		}
+		if err := qtx.DeleteTasksByBoard(ctx, boardID); err != nil {
+			return fmt.Errorf("delete tasks: %w", err)
+		}
+		if err := qtx.DeleteColumnsByBoard(ctx, boardID); err != nil {
+			return fmt.Errorf("delete columns: %w", err)
+		}
+		if err := qtx.DeleteBoard(ctx, boardID); err != nil {
+			return fmt.Errorf("delete board: %w", err)
+		}
+		return nil
 	})
 }
 
@@ -219,5 +270,16 @@ func (r *SetupRepository) ReorderColumns(ctx context.Context, boardID string, or
 			}
 		}
 		return nil
+	})
+}
+
+func (r *SetupRepository) DeleteColumn(ctx context.Context, columnID string) error {
+	columnID = strings.TrimSpace(columnID)
+	if columnID == "" {
+		return fmt.Errorf("column id is required")
+	}
+
+	return r.store.Write(ctx, "delete column", func(tx store.Tx) error {
+		return tx.Queries().DeleteColumn(ctx, columnID)
 	})
 }

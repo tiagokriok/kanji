@@ -33,6 +33,7 @@ func (r *mockSetupRepo) CreateWorkspace(ctx context.Context, w domain.Workspace)
 	return r.err
 }
 func (r *mockSetupRepo) RenameWorkspace(ctx context.Context, id, name string) error { return r.err }
+func (r *mockSetupRepo) DeleteWorkspace(ctx context.Context, id string) error       { return r.err }
 func (r *mockSetupRepo) ListBoards(ctx context.Context, wsID string) ([]domain.Board, error) {
 	return r.boards, r.err
 }
@@ -41,6 +42,7 @@ func (r *mockSetupRepo) CreateBoard(ctx context.Context, b domain.Board) error {
 	return r.err
 }
 func (r *mockSetupRepo) RenameBoard(ctx context.Context, id, name string) error { return r.err }
+func (r *mockSetupRepo) DeleteBoard(ctx context.Context, id string) error       { return r.err }
 func (r *mockSetupRepo) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {
 	return r.columns, r.err
 }
@@ -51,6 +53,7 @@ func (r *mockSetupRepo) UpdateColumn(ctx context.Context, columnID string, name,
 func (r *mockSetupRepo) ReorderColumns(ctx context.Context, boardID string, ids []string) error {
 	return r.err
 }
+func (r *mockSetupRepo) DeleteColumn(ctx context.Context, id string) error { return r.err }
 
 func newMockModelWithContextService(repo domain.SetupRepository) Model {
 	cs := application.NewContextService(repo)

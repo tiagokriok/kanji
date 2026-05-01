@@ -425,3 +425,207 @@ func TestBoardUpdate_JSON(t *testing.T) {
 	assert.Equal(t, "JSON Rename", board["name"])
 	assert.Equal(t, setup.Board.ID, board["id"])
 }
+
+// -- Board Delete Tests --
+
+func TestBoardDelete_DryRun(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("workspace-id", setup.Workspace.ID, "")
+	cmd.Flags().Bool("yes", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("dry-run", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--workspace-id", setup.Workspace.ID, "--dry-run"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runBoardDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Dry-run")
+	assert.Contains(t, output, "columns")
+	assert.Contains(t, output, "tasks")
+}
+
+func TestBoardDelete_DryRun_JSON(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("workspace-id", setup.Workspace.ID, "")
+	cmd.Flags().Bool("yes", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().Bool("json", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--workspace-id", setup.Workspace.ID, "--dry-run", "--json"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runBoardDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "board")
+	assert.Contains(t, output, "dry_run")
+	assert.Contains(t, output, "impact")
+}
+
+func TestBoardDelete_RequiresFlags(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("workspace-id", setup.Workspace.ID, "")
+	cmd.Flags().Bool("yes", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("dry-run", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--workspace-id", setup.Workspace.ID}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runBoardDeleteWithStore(cmd, ns, store)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cascade")
+}
+
+func TestBoardDelete_Success(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	store := state.NewStore(dir + "/state.json")
+	err = store.SetCLIContext("test-ns", state.CLIContext{WorkspaceID: setup.Workspace.ID, BoardID: setup.Board.ID})
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("workspace-id", setup.Workspace.ID, "")
+	cmd.Flags().Bool("yes", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("dry-run", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--workspace-id", setup.Workspace.ID, "--cascade", "--yes"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runBoardDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "board deleted")
+
+	ctx, err := store.GetCLIContext("test-ns")
+	require.NoError(t, err)
+	assert.Empty(t, ctx.BoardID)
+	assert.Equal(t, setup.Workspace.ID, ctx.WorkspaceID)
+}
+
+func TestBoardDelete_Success_JSON(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("workspace-id", setup.Workspace.ID, "")
+	cmd.Flags().Bool("yes", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().Bool("json", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--workspace-id", setup.Workspace.ID, "--cascade", "--yes", "--json"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runBoardDeleteWithStore(cmd, ns, store)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "deleted")
+	assert.Contains(t, output, setup.Board.ID)
+}
+
+func TestBoardDelete_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+	rt.Close()
+
+	store := state.NewStore(dir + "/state.json")
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("board-id", "invalid-id", "")
+	cmd.Flags().String("workspace-id", setup.Workspace.ID, "")
+	cmd.Flags().Bool("yes", false, "")
+	cmd.Flags().Bool("cascade", false, "")
+	cmd.Flags().Bool("dry-run", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", "invalid-id", "--workspace-id", setup.Workspace.ID, "--cascade", "--yes"}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runBoardDeleteWithStore(cmd, ns, store)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}

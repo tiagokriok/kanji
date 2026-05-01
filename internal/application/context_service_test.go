@@ -31,6 +31,9 @@ func (r *fakeSetupRepo) CreateWorkspace(ctx context.Context, workspace domain.Wo
 func (r *fakeSetupRepo) RenameWorkspace(ctx context.Context, workspaceID, name string) error {
 	return nil
 }
+func (r *fakeSetupRepo) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	return nil
+}
 func (r *fakeSetupRepo) ListBoards(ctx context.Context, workspaceID string) ([]domain.Board, error) {
 	return r.boards, nil
 }
@@ -38,6 +41,9 @@ func (r *fakeSetupRepo) CreateBoard(ctx context.Context, board domain.Board) err
 	return nil
 }
 func (r *fakeSetupRepo) RenameBoard(ctx context.Context, boardID, name string) error {
+	return nil
+}
+func (r *fakeSetupRepo) DeleteBoard(ctx context.Context, boardID string) error {
 	return nil
 }
 func (r *fakeSetupRepo) ListColumns(ctx context.Context, boardID string) ([]domain.Column, error) {
@@ -83,6 +89,9 @@ func (r *fakeSetupRepo) ReorderColumns(ctx context.Context, boardID string, orde
 			r.columns[i].Position = p
 		}
 	}
+	return nil
+}
+func (r *fakeSetupRepo) DeleteColumn(ctx context.Context, columnID string) error {
 	return nil
 }
 

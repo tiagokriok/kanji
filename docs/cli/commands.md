@@ -79,6 +79,12 @@ kanji db migrate status --json
 
 Run read-only database diagnostics. Exits with code 1 if issues found.
 
+Checks performed:
+
+- Duplicate workspace/board/column/task names
+- Dangling `cli_context` references (workspace, board, or column IDs no longer exist)
+- Orphaned records and structural inconsistencies
+
 ```bash
 kanji db doctor
 kanji db doctor --json
@@ -159,6 +165,28 @@ kanji workspace get --workspace "My Workspace"
 kanji workspace get --workspace-id <id> --json
 ```
 
+### `kanji workspace delete`
+
+Delete a workspace. **Destructive** -- permanently removes the workspace and, with `--cascade`, all boards, columns, tasks, and comments within it.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--workspace-id` | conditional | Workspace ID (required if `--workspace` not given) |
+| `--workspace` | conditional | Workspace name (requires unique match) |
+| `--yes` | yes | Confirm deletion without interactive prompt |
+| `--cascade` | no | Also delete all child resources (boards, columns, tasks, comments) |
+| `--dry-run` | no | Preview what would be deleted; no data is removed |
+
+```bash
+# Preview impact before deleting
+kanji workspace delete --workspace-id <id> --cascade --dry-run
+
+# Delete with cascade
+kanji workspace delete --workspace-id <id> --yes --cascade
+
+kanji workspace delete --workspace-id <id> --yes --cascade --json
+```
+
 ---
 
 ## Board Operations
@@ -199,6 +227,27 @@ Get a board by ID or name.
 ```bash
 kanji board get --board-id <id>
 kanji board get --board "My Board" --workspace-id <id>
+```
+
+### `kanji board delete`
+
+Delete a board. **Destructive** -- permanently removes the board and, with `--cascade`, all columns, tasks, and comments within it.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--board-id` | conditional | Board ID (required if `--board` not given) |
+| `--board` | conditional | Board name (requires workspace scope for uniqueness) |
+| `--yes` | yes | Confirm deletion without interactive prompt |
+| `--cascade` | no | Also delete all child resources (columns, tasks, comments) |
+| `--dry-run` | no | Preview what would be deleted; no data is removed |
+
+```bash
+# Preview impact
+kanji board delete --board-id <id> --cascade --dry-run
+
+# Delete with cascade
+kanji board delete --board-id <id> --yes --cascade
+kanji board delete --board-id <id> --yes --cascade --json
 ```
 
 ---
@@ -250,6 +299,27 @@ Get a column by ID or name.
 ```bash
 kanji column get --column-id <id>
 kanji column get --column "Todo" --board-id <id>
+```
+
+### `kanji column delete`
+
+Delete a column. **Destructive** -- permanently removes the column. Tasks in the column are reassigned to another column if `--move-tasks-to` is provided; otherwise the column must be empty.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--column-id` | conditional | Column ID (required if `--column` not given) |
+| `--column` | conditional | Column name (requires board scope for uniqueness) |
+| `--move-tasks-to` | no | Column ID to move existing tasks into before deletion |
+| `--yes` | yes | Confirm deletion without interactive prompt |
+
+```bash
+# Delete an empty column
+kanji column delete --column-id <id> --yes
+
+# Reassign tasks to another column, then delete
+kanji column delete --column-id <id> --move-tasks-to <other-column-id> --yes
+
+kanji column delete --column-id <id> --move-tasks-to <other-column-id> --yes --json
 ```
 
 ---
@@ -351,6 +421,37 @@ Get a comment by ID.
 ```bash
 kanji comment get --comment-id <id>
 kanji comment get --comment-id <id> --json
+```
+
+### `kanji comment update`
+
+Update a comment's body.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--comment-id` | yes | Comment ID to update |
+| `--body` | conditional | New comment body (required if `--body-file` not given) |
+| `--body-file` | conditional | Path to file containing new body; use `-` for stdin |
+
+```bash
+kanji comment update --comment-id <id> --body "Updated text"
+kanji comment update --comment-id <id> --body-file updated.md
+
+kanji comment update --comment-id <id> --body "Updated text" --json
+```
+
+### `kanji comment delete`
+
+Delete a comment. **Destructive** -- permanently removes the comment.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--comment-id` | yes | Comment ID to delete |
+| `--yes` | yes | Confirm deletion without interactive prompt |
+
+```bash
+kanji comment delete --comment-id <id> --yes
+kanji comment delete --comment-id <id> --yes --json
 ```
 
 ---

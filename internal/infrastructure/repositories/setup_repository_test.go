@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -913,5 +914,315 @@ func TestSetupRepository_ReorderColumns_WriteWrapsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "missing-col not found in board") {
 		t.Errorf("error = %q, want 'missing-col not found in board'", err.Error())
+	}
+}
+
+func TestSetupRepository_DeleteWorkspace(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID := seedProvider(t, ctx, q)
+
+	if err := q.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+		ID:         "w-delete",
+		ProviderID: providerID,
+		Name:       "Delete Workspace",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          "b-delete",
+		WorkspaceID: "w-delete",
+		Name:        "Board",
+		ViewDefault: "list",
+	}); err != nil {
+		t.Fatalf("create board: %v", err)
+	}
+	if err := q.CreateColumn(ctx, sqlc.CreateColumnParams{
+		ID:       "c-delete",
+		BoardID:  "b-delete",
+		Name:     "Column",
+		Color:    "#6B7280",
+		Position: 1,
+	}); err != nil {
+		t.Fatalf("create column: %v", err)
+	}
+	if err := q.CreateTask(ctx, sqlc.CreateTaskParams{
+		ID:            "task-delete",
+		ProviderID:    providerID,
+		WorkspaceID:   "w-delete",
+		BoardID:       sql.NullString{String: "b-delete", Valid: true},
+		ColumnID:      sql.NullString{String: "c-delete", Valid: true},
+		Title:         "Task",
+		DescriptionMd: "",
+		Priority:      0,
+		Position:      1,
+		CreatedAt:     "2024-01-01T00:00:00Z",
+		UpdatedAt:     "2024-01-01T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	if err := q.CreateComment(ctx, sqlc.CreateCommentParams{
+		ID:         "comment-delete",
+		TaskID:     "task-delete",
+		ProviderID: providerID,
+		BodyMd:     "Comment",
+		CreatedAt:  "2024-01-01T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("create comment: %v", err)
+	}
+
+	repo := NewSetupRepository(store.New(adapter))
+	if err := repo.DeleteWorkspace(ctx, "w-delete"); err != nil {
+		t.Fatalf("delete workspace: %v", err)
+	}
+
+	workspaces, err := q.ListWorkspaces(ctx)
+	if err != nil {
+		t.Fatalf("list workspaces: %v", err)
+	}
+	if len(workspaces) != 0 {
+		t.Errorf("len(workspaces) = %d, want 0", len(workspaces))
+	}
+
+	boards, err := q.ListBoards(ctx, "w-delete")
+	if err != nil {
+		t.Fatalf("list boards: %v", err)
+	}
+	if len(boards) != 0 {
+		t.Errorf("len(boards) = %d, want 0", len(boards))
+	}
+
+	columns, err := q.ListColumns(ctx, "b-delete")
+	if err != nil {
+		t.Fatalf("list columns: %v", err)
+	}
+	if len(columns) != 0 {
+		t.Errorf("len(columns) = %d, want 0", len(columns))
+	}
+
+	tasks, err := q.ListTasks(ctx, sqlc.ListTasksParams{WorkspaceID: "w-delete"})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("len(tasks) = %d, want 0", len(tasks))
+	}
+
+	comments, err := q.ListComments(ctx, "task-delete")
+	if err != nil {
+		t.Fatalf("list comments: %v", err)
+	}
+	if len(comments) != 0 {
+		t.Errorf("len(comments) = %d, want 0", len(comments))
+	}
+}
+
+func TestSetupRepository_DeleteWorkspace_EmptyID(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewSetupRepository(store.New(adapter))
+
+	if err := repo.DeleteWorkspace(ctx, ""); err == nil {
+		t.Error("expected error for empty workspace id, got nil")
+	}
+}
+
+func TestSetupRepository_DeleteWorkspace_NotFound(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewSetupRepository(store.New(adapter))
+
+	if err := repo.DeleteWorkspace(ctx, "missing-ws"); err != nil {
+		t.Fatalf("delete non-existent workspace: %v", err)
+	}
+}
+
+func TestSetupRepository_DeleteBoard(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID := seedProvider(t, ctx, q)
+
+	if err := q.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+		ID:         "w-delete-board",
+		ProviderID: providerID,
+		Name:       "Workspace",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          "b-delete",
+		WorkspaceID: "w-delete-board",
+		Name:        "Board",
+		ViewDefault: "list",
+	}); err != nil {
+		t.Fatalf("create board: %v", err)
+	}
+	if err := q.CreateColumn(ctx, sqlc.CreateColumnParams{
+		ID:       "c-delete",
+		BoardID:  "b-delete",
+		Name:     "Column",
+		Color:    "#6B7280",
+		Position: 1,
+	}); err != nil {
+		t.Fatalf("create column: %v", err)
+	}
+	if err := q.CreateTask(ctx, sqlc.CreateTaskParams{
+		ID:            "task-delete",
+		ProviderID:    providerID,
+		WorkspaceID:   "w-delete-board",
+		BoardID:       sql.NullString{String: "b-delete", Valid: true},
+		ColumnID:      sql.NullString{String: "c-delete", Valid: true},
+		Title:         "Task",
+		DescriptionMd: "",
+		Priority:      0,
+		Position:      1,
+		CreatedAt:     "2024-01-01T00:00:00Z",
+		UpdatedAt:     "2024-01-01T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	if err := q.CreateComment(ctx, sqlc.CreateCommentParams{
+		ID:         "comment-delete",
+		TaskID:     "task-delete",
+		ProviderID: providerID,
+		BodyMd:     "Comment",
+		CreatedAt:  "2024-01-01T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("create comment: %v", err)
+	}
+
+	repo := NewSetupRepository(store.New(adapter))
+	if err := repo.DeleteBoard(ctx, "b-delete"); err != nil {
+		t.Fatalf("delete board: %v", err)
+	}
+
+	boards, err := q.ListBoards(ctx, "w-delete-board")
+	if err != nil {
+		t.Fatalf("list boards: %v", err)
+	}
+	if len(boards) != 0 {
+		t.Errorf("len(boards) = %d, want 0", len(boards))
+	}
+
+	columns, err := q.ListColumns(ctx, "b-delete")
+	if err != nil {
+		t.Fatalf("list columns: %v", err)
+	}
+	if len(columns) != 0 {
+		t.Errorf("len(columns) = %d, want 0", len(columns))
+	}
+
+	tasks, err := q.ListTasks(ctx, sqlc.ListTasksParams{WorkspaceID: "w-delete-board"})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("len(tasks) = %d, want 0", len(tasks))
+	}
+
+	comments, err := q.ListComments(ctx, "task-delete")
+	if err != nil {
+		t.Fatalf("list comments: %v", err)
+	}
+	if len(comments) != 0 {
+		t.Errorf("len(comments) = %d, want 0", len(comments))
+	}
+}
+
+func TestSetupRepository_DeleteBoard_EmptyID(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewSetupRepository(store.New(adapter))
+
+	if err := repo.DeleteBoard(ctx, ""); err == nil {
+		t.Error("expected error for empty board id, got nil")
+	}
+}
+
+func TestSetupRepository_DeleteBoard_NotFound(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewSetupRepository(store.New(adapter))
+
+	if err := repo.DeleteBoard(ctx, "missing-board"); err != nil {
+		t.Fatalf("delete non-existent board: %v", err)
+	}
+}
+
+func TestSetupRepository_DeleteColumn(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	q := adapter.Queries()
+	providerID := seedProvider(t, ctx, q)
+
+	if err := q.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{
+		ID:         "w-delete-col",
+		ProviderID: providerID,
+		Name:       "Workspace",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := q.CreateBoard(ctx, sqlc.CreateBoardParams{
+		ID:          "b-delete-col",
+		WorkspaceID: "w-delete-col",
+		Name:        "Board",
+		ViewDefault: "kanban",
+	}); err != nil {
+		t.Fatalf("create board: %v", err)
+	}
+	for _, c := range []struct {
+		id       string
+		position int64
+	}{
+		{"c-delete-1", 1},
+		{"c-delete-2", 2},
+	} {
+		if err := q.CreateColumn(ctx, sqlc.CreateColumnParams{
+			ID:       c.id,
+			BoardID:  "b-delete-col",
+			Name:     c.id,
+			Color:    "#6B7280",
+			Position: c.position,
+		}); err != nil {
+			t.Fatalf("create column %s: %v", c.id, err)
+		}
+	}
+
+	repo := NewSetupRepository(store.New(adapter))
+	if err := repo.DeleteColumn(ctx, "c-delete-1"); err != nil {
+		t.Fatalf("delete column: %v", err)
+	}
+
+	columns, err := q.ListColumns(ctx, "b-delete-col")
+	if err != nil {
+		t.Fatalf("list columns: %v", err)
+	}
+	if len(columns) != 1 {
+		t.Fatalf("len(columns) = %d, want 1", len(columns))
+	}
+	if columns[0].ID != "c-delete-2" {
+		t.Errorf("ID = %q, want %q", columns[0].ID, "c-delete-2")
+	}
+}
+
+func TestSetupRepository_DeleteColumn_EmptyID(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewSetupRepository(store.New(adapter))
+
+	if err := repo.DeleteColumn(ctx, ""); err == nil {
+		t.Error("expected error for empty column id, got nil")
+	}
+}
+
+func TestSetupRepository_DeleteColumn_NotFound(t *testing.T) {
+	adapter := newTestAdapter(t)
+	ctx := context.Background()
+	repo := NewSetupRepository(store.New(adapter))
+
+	if err := repo.DeleteColumn(ctx, "missing-col"); err != nil {
+		t.Fatalf("delete non-existent column: %v", err)
 	}
 }

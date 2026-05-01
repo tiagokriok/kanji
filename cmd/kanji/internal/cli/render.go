@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -148,6 +149,41 @@ func RenderWriteResolved(w io.Writer, resolved map[string]string) error {
 	}
 	fmt.Fprintln(w, "Resolved from:")
 	return RenderKV(w, resolved)
+}
+
+// RenderDryRunImpact writes a human-readable dry-run impact summary.
+func RenderDryRunImpact(w io.Writer, resourceName string, impact map[string]int) error {
+	fmt.Fprintf(w, "Dry-run: %s delete impact\n", resourceName)
+	pairs := map[string]string{}
+	for k, v := range impact {
+		pairs[k] = strconv.Itoa(v)
+	}
+	return RenderKV(w, pairs)
+}
+
+// RenderDryRunImpactJSON writes a JSON dry-run impact payload.
+func RenderDryRunImpactJSON(w io.Writer, resourceName string, impact map[string]int) error {
+	payload := map[string]interface{}{
+		"dry_run": true,
+		"impact":  impact,
+	}
+	return RenderWrappedJSON(w, resourceName, payload)
+}
+
+// RenderDeleteResult writes a human-readable delete success block.
+func RenderDeleteResult(w io.Writer, resourceName, id string) error {
+	fmt.Fprintf(w, "%s deleted\nID:  %s\n", resourceName, id)
+	return nil
+}
+
+// RenderDeleteResultJSON writes a JSON delete success payload.
+func RenderDeleteResultJSON(w io.Writer, resourceName string, id string, cascade bool) error {
+	payload := map[string]interface{}{
+		"id":      id,
+		"deleted": true,
+		"cascade": cascade,
+	}
+	return RenderWrappedJSON(w, resourceName, payload)
 }
 
 func encodeJSON(w io.Writer, v interface{}) error {

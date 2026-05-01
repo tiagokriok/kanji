@@ -146,3 +146,24 @@ SELECT id, task_id, provider_id, remote_id, body_md, author, created_at
 FROM comments
 WHERE task_id = ?
 ORDER BY created_at ASC;
+
+-- name: UpdateComment :exec
+UPDATE comments SET body_md = ? WHERE id = ?;
+
+-- name: DeleteComment :exec
+DELETE FROM comments WHERE id = ?;
+
+-- name: DeleteBoard :exec
+DELETE FROM boards WHERE id = ?;
+
+-- name: DeleteColumn :exec
+DELETE FROM columns WHERE id = ?;
+
+-- name: DeleteCommentsByBoard :exec
+DELETE FROM comments WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?);
+
+-- name: DeleteTasksByBoard :exec
+DELETE FROM tasks WHERE board_id = ?;
+
+-- name: DeleteColumnsByBoard :exec
+DELETE FROM columns WHERE board_id = ?;

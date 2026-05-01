@@ -116,6 +116,31 @@ kanji comment get --comment-id <id>
 kanji comment create --task-id <id> --body "Looks good!"
 ```
 
+### Destructive operations
+
+Delete commands require `--yes` for non-interactive use. Use `--dry-run` to preview impact before committing.
+
+```bash
+# Preview workspace deletion (lists all cascaded resources)
+kanji workspace delete --workspace-id <id> --cascade --dry-run
+
+# Delete a workspace and everything inside it
+kanji workspace delete --workspace-id <id> --yes --cascade
+
+# Delete a board and its columns/tasks
+kanji board delete --board-id <id> --yes --cascade
+
+# Delete a column -- move tasks elsewhere first, or ensure it's empty
+kanji column delete --column-id <id> --move-tasks-to <other-column-id> --yes
+
+# Delete a comment
+kanji comment delete --comment-id <id> --yes
+```
+
+Run `kanji db doctor` to detect integrity issues (duplicate names, dangling context refs) before or after bulk deletions.
+
+See `docs/cli/commands.md` for full flag tables and additional examples.
+
 ### TUI
 
 ```bash

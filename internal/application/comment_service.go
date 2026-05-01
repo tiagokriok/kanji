@@ -58,3 +58,20 @@ func (s *CommentService) ListComments(ctx context.Context, taskID string) ([]dom
 	}
 	return s.repo.ListByTask(ctx, taskID)
 }
+
+func (s *CommentService) UpdateComment(ctx context.Context, commentID string, bodyMD string) error {
+	if strings.TrimSpace(commentID) == "" {
+		return errors.New("comment id is required")
+	}
+	if strings.TrimSpace(bodyMD) == "" {
+		return errors.New("comment body is required")
+	}
+	return s.repo.Update(ctx, commentID, bodyMD)
+}
+
+func (s *CommentService) DeleteComment(ctx context.Context, commentID string) error {
+	if strings.TrimSpace(commentID) == "" {
+		return errors.New("comment id is required")
+	}
+	return s.repo.Delete(ctx, commentID)
+}
