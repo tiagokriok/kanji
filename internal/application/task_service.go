@@ -30,6 +30,7 @@ type UpdateTaskInput struct {
 	Status        *string
 	Priority      *int
 	DueAt         *time.Time
+	ClearDueAt    bool
 	ColumnID      *string
 	Labels        *[]string
 }
@@ -86,6 +87,7 @@ func (s *TaskService) UpdateTask(ctx context.Context, taskID string, input Updat
 		Status:        trimStringPointer(input.Status),
 		Priority:      input.Priority,
 		DueAt:         input.DueAt,
+		ClearDueAt:    input.ClearDueAt,
 		ColumnID:      trimStringPointer(input.ColumnID),
 		Labels:        normalizeLabelPatch(input.Labels),
 	}

@@ -113,15 +113,7 @@ func runColumnCreateWithStore(cmd *cobra.Command, ns Namespace, store *state.Sto
 		cliCtx, _ := store.GetCLIContext(ns.Key)
 		workspaceID := cliCtx.WorkspaceID
 		if workspaceID == "" {
-			workspaces, err := rt.ContextService.ListWorkspaces(ctx)
-			if err != nil {
-				return err
-			}
-			if len(workspaces) == 1 {
-				workspaceID = workspaces[0].ID
-			} else {
-				return NewValidation("board-id or board with workspace scope is required")
-			}
+			return NewValidation("workspace scope required: use --workspace-id, --workspace, or kanji context set")
 		}
 		boards, err := rt.ContextService.ListBoards(ctx, workspaceID)
 		if err != nil {
@@ -446,16 +438,7 @@ func runColumnListWithStore(cmd *cobra.Command, ns Namespace, store *state.Store
 		cliCtx, _ := store.GetCLIContext(ns.Key)
 		workspaceID := cliCtx.WorkspaceID
 		if workspaceID == "" {
-			// Try to find workspace from context or fail.
-			workspaces, err := rt.ContextService.ListWorkspaces(ctx)
-			if err != nil {
-				return err
-			}
-			if len(workspaces) == 1 {
-				workspaceID = workspaces[0].ID
-			} else {
-				return NewValidation("board-id or board with workspace scope is required")
-			}
+			return NewValidation("workspace scope required: use --workspace-id, --workspace, or kanji context set")
 		}
 		boards, err := rt.ContextService.ListBoards(ctx, workspaceID)
 		if err != nil {
@@ -526,6 +509,7 @@ func newColumnUpdateCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("column-id", "", "column ID")
+	cmd.Flags().String("column", "", "column name")
 	cmd.Flags().String("name", "", "new name")
 	cmd.Flags().String("color", "", "new hex color")
 	cmd.Flags().Int("wip-limit", 0, "WIP limit")
@@ -551,13 +535,48 @@ func runColumnUpdate(cmd *cobra.Command, ns Namespace) error {
 
 	ctx := context.Background()
 
-	if !cmd.Flags().Changed("column-id") {
-		return NewValidation("column-id is required")
+	store, err := defaultStateStore()
+	if err != nil {
+		return err
 	}
-	columnID, _ := cmd.Flags().GetString("column-id")
+
+	var columnID string
+	if cmd.Flags().Changed("column-id") {
+		columnID, _ = cmd.Flags().GetString("column-id")
+	} else if cmd.Flags().Changed("column") {
+		name, _ := cmd.Flags().GetString("column")
+		workspaceID, _, err := ResolveWorkspaceScope(cmd, rt, store, ns)
+		if err != nil {
+			return err
+		}
+		boardID, _, err := ResolveBoardScope(cmd, rt, store, ns, workspaceID)
+		if err != nil {
+			return err
+		}
+		columns, err := rt.ContextService.ListColumns(ctx, boardID)
+		if err != nil {
+			return err
+		}
+		var matches []domain.Column
+		for _, c := range columns {
+			if ExactMatch(c.Name, name) {
+				matches = append(matches, c)
+			}
+		}
+		if len(matches) == 0 {
+			return NewNotFound("column", name)
+		}
+		if len(matches) > 1 {
+			return NewAmbiguous("column", name, len(matches))
+		}
+		columnID = matches[0].ID
+	} else {
+		return NewValidation("column-id or column is required")
+	}
 
 	var name, color *string
 	var wipLimit *int
+	clearWIP := false
 
 	if cmd.Flags().Changed("name") {
 		v, _ := cmd.Flags().GetString("name")
@@ -575,15 +594,14 @@ func runColumnUpdate(cmd *cobra.Command, ns Namespace) error {
 		wipLimit = &v
 	}
 	if cmd.Flags().Changed("clear-wip-limit") {
-		v := 0
-		wipLimit = &v
+		clearWIP = true
 	}
 
-	if name == nil && color == nil && wipLimit == nil {
+	if name == nil && color == nil && wipLimit == nil && !clearWIP {
 		return NewValidation("at least one of --name, --color, --wip-limit, --clear-wip-limit is required")
 	}
 
-	if err := rt.ContextService.UpdateColumn(ctx, columnID, name, color, wipLimit); err != nil {
+	if err := rt.ContextService.UpdateColumn(ctx, columnID, name, color, wipLimit, clearWIP); err != nil {
 		return err
 	}
 

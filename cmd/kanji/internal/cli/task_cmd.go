@@ -88,32 +88,11 @@ func runTaskGet(cmd *cobra.Command, ns Namespace) error {
 	var task domain.Task
 	if cmd.Flags().Changed("task-id") {
 		id, _ := cmd.Flags().GetString("task-id")
-		// Search across all workspaces.
-		workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+		t, err := rt.TaskService.GetTask(ctx, id)
 		if err != nil {
-			return err
-		}
-		found := false
-		for _, ws := range workspaces {
-			filters := application.ListTaskFilters{WorkspaceID: ws.ID}
-			tasks, err := rt.TaskFlow.ListTasks(ctx, filters)
-			if err != nil {
-				return err
-			}
-			for _, t := range tasks {
-				if t.ID == id {
-					task = t
-					found = true
-					break
-				}
-			}
-			if found {
-				break
-			}
-		}
-		if !found {
 			return NewNotFound("task", id)
 		}
+		task = t
 	} else if cmd.Flags().Changed("task") {
 		title, _ := cmd.Flags().GetString("task")
 		// Need workspace scope.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -76,8 +77,15 @@ func RenderKV(w io.Writer, pairs map[string]string) error {
 		}
 	}
 
-	for k, v := range pairs {
-		fmt.Fprintf(w, "%s:  %s\n", strings.Repeat(" ", maxKey-len(k))+k, v)
+	// Sort keys for stable output.
+	keys := make([]string, 0, len(pairs))
+	for k := range pairs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		fmt.Fprintf(w, "%s:  %s\n", strings.Repeat(" ", maxKey-len(k))+k, pairs[k])
 	}
 
 	return nil

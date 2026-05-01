@@ -55,7 +55,16 @@ func ResolveWorkspaceScope(cmd *cobra.Command, rt *Runtime, store *state.Store, 
 		return "", "", fmt.Errorf("load cli context: %w", err)
 	}
 	if cliCtx.WorkspaceID != "" {
-		return cliCtx.WorkspaceID, "context", nil
+		workspaces, err := rt.ContextService.ListWorkspaces(context.Background())
+		if err != nil {
+			return "", "", fmt.Errorf("list workspaces: %w", err)
+		}
+		for _, ws := range workspaces {
+			if ws.ID == cliCtx.WorkspaceID {
+				return cliCtx.WorkspaceID, "context", nil
+			}
+		}
+		return "", "", NewValidation("stored workspace no longer exists; run 'kanji context set'")
 	}
 
 	return "", "", NewValidation("workspace is required: provide --workspace-id, --workspace, or set context with 'kanji context set'")
@@ -107,7 +116,16 @@ func ResolveBoardScope(cmd *cobra.Command, rt *Runtime, store *state.Store, ns N
 		return "", "", fmt.Errorf("load cli context: %w", err)
 	}
 	if cliCtx.WorkspaceID == workspaceID && cliCtx.BoardID != "" {
-		return cliCtx.BoardID, "context", nil
+		boards, err := rt.ContextService.ListBoards(context.Background(), workspaceID)
+		if err != nil {
+			return "", "", fmt.Errorf("list boards: %w", err)
+		}
+		for _, b := range boards {
+			if b.ID == cliCtx.BoardID {
+				return cliCtx.BoardID, "context", nil
+			}
+		}
+		return "", "", NewValidation("stored board no longer exists; run 'kanji context set'")
 	}
 
 	return "", "", NewValidation("board is required: provide --board-id, --board, or set context with 'kanji context set'")

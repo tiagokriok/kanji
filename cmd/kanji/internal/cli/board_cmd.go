@@ -187,6 +187,14 @@ func runBoardCreateWithStore(cmd *cobra.Command, ns Namespace, store *state.Stor
 }
 
 func runBoardUpdate(cmd *cobra.Command, ns Namespace) error {
+	store, err := defaultStateStore()
+	if err != nil {
+		return err
+	}
+	return runBoardUpdateWithStore(cmd, ns, store)
+}
+
+func runBoardUpdateWithStore(cmd *cobra.Command, ns Namespace, store *state.Store) error {
 	cfg, err := ResolveConfig(cmd)
 	if err != nil {
 		return err
@@ -204,81 +212,6 @@ func runBoardUpdate(cmd *cobra.Command, ns Namespace) error {
 
 	ctx := context.Background()
 
-	// Resolve board.
-	var boardID string
-	if cmd.Flags().Changed("board-id") {
-		id, _ := cmd.Flags().GetString("board-id")
-		// Validate existence by searching across workspaces.
-		workspaces, err := rt.ContextService.ListWorkspaces(ctx)
-		if err != nil {
-			return err
-		}
-		found := false
-		for _, ws := range workspaces {
-			boards, err := rt.ContextService.ListBoards(ctx, ws.ID)
-			if err != nil {
-				return err
-			}
-			for _, b := range boards {
-				if b.ID == id {
-					boardID = b.ID
-					found = true
-					break
-				}
-			}
-			if found {
-				break
-			}
-		}
-		if !found {
-			return NewNotFound("board", id)
-		}
-	} else if cmd.Flags().Changed("board") {
-		name, _ := cmd.Flags().GetString("board")
-		// Need workspace scope.
-		var workspaceID string
-		if cmd.Flags().Changed("workspace-id") {
-			workspaceID, _ = cmd.Flags().GetString("workspace-id")
-		} else if cmd.Flags().Changed("workspace") {
-			wsName, _ := cmd.Flags().GetString("workspace")
-			workspaces, err := rt.ContextService.ListWorkspaces(ctx)
-			if err != nil {
-				return err
-			}
-			found := false
-			for _, ws := range workspaces {
-				if ExactMatch(ws.Name, wsName) {
-					workspaceID = ws.ID
-					found = true
-					break
-				}
-			}
-			if !found {
-				return NewNotFound("workspace", wsName)
-			}
-		} else {
-			return NewValidation("workspace scope required for board name resolution")
-		}
-
-		boards, err := rt.ContextService.ListBoards(ctx, workspaceID)
-		if err != nil {
-			return err
-		}
-		found := false
-		for _, b := range boards {
-			if ExactMatch(b.Name, name) {
-				boardID = b.ID
-				found = true
-				break
-			}
-		}
-		if !found {
-			return NewNotFound("board", name)
-		}
-	} else {
-		return NewValidation("board-id or board is required")
-	}
-
 	// Validate name.
 	if !cmd.Flags().Changed("name") {
 		return NewValidation("name is required")
@@ -286,6 +219,18 @@ func runBoardUpdate(cmd *cobra.Command, ns Namespace) error {
 	name, _ := cmd.Flags().GetString("name")
 	if name == "" {
 		return NewValidation("name is required")
+	}
+
+	// Resolve workspace scope.
+	workspaceID, _, err := ResolveWorkspaceScope(cmd, rt, store, ns)
+	if err != nil {
+		return err
+	}
+
+	// Resolve board scope.
+	boardID, _, err := ResolveBoardScope(cmd, rt, store, ns, workspaceID)
+	if err != nil {
+		return err
 	}
 
 	if err := rt.ContextService.RenameBoard(ctx, boardID, name); err != nil {

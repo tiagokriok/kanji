@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -142,7 +143,7 @@ func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column
 	})
 }
 
-func (r *SetupRepository) UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int) error {
+func (r *SetupRepository) UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int, clearWIP bool) error {
 	columnID = strings.TrimSpace(columnID)
 	if columnID == "" {
 		return fmt.Errorf("column id is required")
@@ -150,7 +151,10 @@ func (r *SetupRepository) UpdateColumn(ctx context.Context, columnID string, nam
 
 	return r.store.Write(ctx, "update column", func(tx store.Tx) error {
 		qtx := tx.Queries()
-		if name != nil && strings.TrimSpace(*name) != "" {
+		if name != nil {
+			if strings.TrimSpace(*name) == "" {
+				return errors.New("column name cannot be empty")
+			}
 			if err := qtx.UpdateColumnName(ctx, sqlc.UpdateColumnNameParams{
 				Name: strings.TrimSpace(*name),
 				ID:   columnID,
@@ -164,6 +168,14 @@ func (r *SetupRepository) UpdateColumn(ctx context.Context, columnID string, nam
 				ID:    columnID,
 			}); err != nil {
 				return fmt.Errorf("update column color: %w", err)
+			}
+		}
+		if clearWIP {
+			if err := qtx.UpdateColumnWIPLimit(ctx, sqlc.UpdateColumnWIPLimitParams{
+				WipLimit: nullInt(nil),
+				ID:       columnID,
+			}); err != nil {
+				return fmt.Errorf("clear column wip limit: %w", err)
 			}
 		}
 		if wipLimit != nil {

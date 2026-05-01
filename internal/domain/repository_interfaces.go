@@ -29,6 +29,6 @@ type SetupRepository interface {
 	RenameBoard(ctx context.Context, boardID, name string) error
 	ListColumns(ctx context.Context, boardID string) ([]Column, error)
 	CreateColumn(ctx context.Context, column Column) error
-	UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int) error
+	UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int, clearWIP bool) error
 	ReorderColumns(ctx context.Context, boardID string, orderedColumnIDs []string) error
 }

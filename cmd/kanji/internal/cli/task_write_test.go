@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -147,8 +148,8 @@ func TestAssembleUpdateTaskInput_ClearDueDate(t *testing.T) {
 
 	input, err := AssembleUpdateTaskInput(cmd)
 	require.NoError(t, err)
-	assert.NotNil(t, input.DueAt)
-	assert.True(t, input.DueAt.IsZero())
+	assert.Nil(t, input.DueAt)
+	assert.True(t, input.ClearDueAt)
 }
 
 func TestAssembleUpdateTaskInput_ClearLabels(t *testing.T) {
@@ -286,6 +287,50 @@ func TestResolveTaskID_Missing(t *testing.T) {
 }
 
 // ── ResolveMoveDestination ──
+
+func TestResolveTaskID_Ambiguous(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+
+	_, err = rt.TaskService.CreateTask(context.Background(), application.CreateTaskInput{
+		ProviderID:  setup.Provider.ID,
+		WorkspaceID: setup.Workspace.ID,
+		BoardID:     &setup.Board.ID,
+		ColumnID:    &setup.Columns[0].ID,
+		Title:       "Duplicate",
+		Status:      &setup.Columns[0].Name,
+	})
+	require.NoError(t, err)
+	_, err = rt.TaskService.CreateTask(context.Background(), application.CreateTaskInput{
+		ProviderID:  setup.Provider.ID,
+		WorkspaceID: setup.Workspace.ID,
+		BoardID:     &setup.Board.ID,
+		ColumnID:    &setup.Columns[0].ID,
+		Title:       "Duplicate",
+		Status:      &setup.Columns[0].Name,
+	})
+	require.NoError(t, err)
+	rt.Close()
+
+	cfg2 := RuntimeConfig{DBPath: dbPath}
+	rt2, err := NewRuntime(context.Background(), cfg2)
+	require.NoError(t, err)
+	defer rt2.Close()
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("task", "", "")
+	require.NoError(t, cmd.ParseFlags([]string{"--task", "Duplicate"}))
+
+	_, err = ResolveTaskID(cmd, rt2, setup.Workspace.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ambiguous")
+}
 
 func TestResolveMoveDestination_ByID(t *testing.T) {
 	dir := t.TempDir()
@@ -614,6 +659,64 @@ func TestTaskUpdate_NoPatchFields(t *testing.T) {
 	assert.Contains(t, err.Error(), "at least one")
 }
 
+func TestTaskUpdate_ClearDueDateSetsNull(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+
+	due := time.Date(2025, 12, 25, 0, 0, 0, 0, time.UTC)
+	task, err := rt.TaskService.CreateTask(context.Background(), application.CreateTaskInput{
+		ProviderID:  setup.Provider.ID,
+		WorkspaceID: setup.Workspace.ID,
+		BoardID:     &setup.Board.ID,
+		ColumnID:    &setup.Columns[0].ID,
+		Title:       "Dated",
+		Status:      &setup.Columns[0].Name,
+		DueAt:       &due,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, task.DueAt)
+	rt.Close()
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("task-id", task.ID, "")
+	cmd.Flags().String("title", "", "")
+	cmd.Flags().String("description", "", "")
+	cmd.Flags().String("description-file", "", "")
+	cmd.Flags().String("priority", "", "")
+	cmd.Flags().String("due-date", "", "")
+	cmd.Flags().StringSlice("labels", nil, "")
+	cmd.Flags().Bool("clear-description", false, "")
+	cmd.Flags().Bool("clear-due-date", false, "")
+	cmd.Flags().Bool("clear-labels", false, "")
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--db-path", dbPath,
+		"--task-id", task.ID,
+		"--clear-due-date",
+	}))
+	buf := new(strings.Builder)
+	cmd.SetOut(buf)
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runTaskUpdate(cmd, ns)
+	require.NoError(t, err)
+
+	cfg2 := RuntimeConfig{DBPath: dbPath}
+	rt2, err := NewRuntime(context.Background(), cfg2)
+	require.NoError(t, err)
+	defer rt2.Close()
+
+	updated, err := rt2.TaskService.GetTask(context.Background(), task.ID)
+	require.NoError(t, err)
+	assert.Nil(t, updated.DueAt)
+}
+
 // ── task move ──
 
 func TestTaskMove_Success(t *testing.T) {
@@ -722,6 +825,63 @@ func TestTaskMove_MissingDestination(t *testing.T) {
 	err = runTaskMove(cmd, ns)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "to-column-id or to-column")
+}
+
+func TestTaskMove_CrossBoardBlocked(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	cfg := RuntimeConfig{DBPath: dbPath}
+	rt, err := NewRuntime(context.Background(), cfg)
+	require.NoError(t, err)
+	setup, err := rt.BootstrapService.EnsureDefaultSetup(context.Background())
+	require.NoError(t, err)
+
+	// Create a second board in the same workspace.
+	board2, err := rt.ContextService.CreateBoardWithColumns(context.Background(), setup.Workspace.ID, "Board 2", []application.CreateBoardColumnInput{
+		{Name: "Col A", Color: "#FF0000"},
+		{Name: "Col B", Color: "#00FF00"},
+	})
+	require.NoError(t, err)
+	cols2, err := rt.ContextService.ListColumns(context.Background(), board2.ID)
+	require.NoError(t, err)
+
+	task, err := rt.TaskService.CreateTask(context.Background(), application.CreateTaskInput{
+		ProviderID:  setup.Provider.ID,
+		WorkspaceID: setup.Workspace.ID,
+		BoardID:     &setup.Board.ID,
+		ColumnID:    &setup.Columns[0].ID,
+		Title:       "Movable",
+		Status:      &setup.Columns[0].Name,
+	})
+	require.NoError(t, err)
+	rt.Close()
+
+	cfg2 := RuntimeConfig{DBPath: dbPath}
+	rt2, err := NewRuntime(context.Background(), cfg2)
+	require.NoError(t, err)
+	defer rt2.Close()
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("db-path", "", "")
+	cmd.Flags().String("task-id", task.ID, "")
+	cmd.Flags().String("task", "", "")
+	cmd.Flags().String("to-column-id", "", "")
+	cmd.Flags().String("to-column", cols2[1].Name, "")
+	cmd.Flags().String("workspace-id", setup.Workspace.ID, "")
+	cmd.Flags().String("board-id", board2.ID, "")
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--db-path", dbPath,
+		"--task-id", task.ID,
+		"--to-column", cols2[1].Name,
+		"--workspace-id", setup.Workspace.ID,
+		"--board-id", board2.ID,
+	}))
+
+	ns := Namespace{Key: "test-ns", Source: "cwd"}
+	err = runTaskMove(cmd, ns)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot move task to a different board")
 }
 
 // ── task delete ──

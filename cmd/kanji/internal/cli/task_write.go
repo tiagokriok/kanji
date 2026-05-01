@@ -118,8 +118,7 @@ func AssembleUpdateTaskInput(cmd *cobra.Command) (application.UpdateTaskInput, e
 		input.DueAt = &d
 	}
 	if clearDue {
-		zero := time.Time{}
-		input.DueAt = &zero
+		input.ClearDueAt = true
 	}
 
 	labelsChanged := cmd.Flags().Changed("labels")
@@ -176,12 +175,19 @@ func ResolveTaskID(cmd *cobra.Command, rt *Runtime, workspaceID string) (string,
 		if err != nil {
 			return "", err
 		}
+		var matches []string
 		for _, t := range tasks {
 			if ExactMatch(t.Title, title) {
-				return t.ID, nil
+				matches = append(matches, t.ID)
 			}
 		}
-		return "", NewNotFound("task", title)
+		if len(matches) == 0 {
+			return "", NewNotFound("task", title)
+		}
+		if len(matches) > 1 {
+			return "", NewAmbiguous("task", title, len(matches))
+		}
+		return matches[0], nil
 	}
 
 	return "", NewValidation("task-id or task is required")
@@ -437,7 +443,7 @@ func runTaskUpdate(cmd *cobra.Command, ns Namespace) error {
 
 	// Resolve workspace for task title resolution.
 	var workspaceID string
-	if cmd.Flags().Changed("workspace-id") || cmd.Flags().Changed("workspace") {
+	if cmd.Flags().Changed("task") {
 		workspaceID, _, err = ResolveWorkspaceScope(cmd, rt, store, ns)
 		if err != nil {
 			return err
@@ -456,7 +462,7 @@ func runTaskUpdate(cmd *cobra.Command, ns Namespace) error {
 
 	// Ensure at least one patch field is present.
 	if input.Title == nil && input.DescriptionMD == nil && input.Priority == nil &&
-		input.DueAt == nil && input.Labels == nil {
+		input.DueAt == nil && !input.ClearDueAt && input.Labels == nil {
 		return NewValidation("at least one of --title, --description, --priority, --due-date, --labels, --clear-description, --clear-due-date, --clear-labels is required")
 	}
 
@@ -523,7 +529,7 @@ func runTaskMove(cmd *cobra.Command, ns Namespace) error {
 
 	// Resolve workspace for task title resolution.
 	var workspaceID string
-	if cmd.Flags().Changed("workspace-id") || cmd.Flags().Changed("workspace") {
+	if cmd.Flags().Changed("task") {
 		workspaceID, _, err = ResolveWorkspaceScope(cmd, rt, store, ns)
 		if err != nil {
 			return err
@@ -561,6 +567,11 @@ func runTaskMove(cmd *cobra.Command, ns Namespace) error {
 	columnID, status, err := ResolveMoveDestination(cmd, rt, boardID)
 	if err != nil {
 		return err
+	}
+
+	// Cross-board guard.
+	if task.BoardID == nil || boardID != *task.BoardID {
+		return NewValidation("cannot move task to a different board")
 	}
 
 	if err := rt.TaskFlow.MoveTask(ctx, taskID, &columnID, &status, 0); err != nil {
@@ -626,7 +637,7 @@ func runTaskDelete(cmd *cobra.Command, ns Namespace) error {
 
 	// Resolve workspace for task title resolution.
 	var workspaceID string
-	if cmd.Flags().Changed("workspace-id") || cmd.Flags().Changed("workspace") {
+	if cmd.Flags().Changed("task") {
 		workspaceID, _, err = ResolveWorkspaceScope(cmd, rt, store, ns)
 		if err != nil {
 			return err

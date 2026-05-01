@@ -46,6 +46,11 @@ func (r *TaskRepository) Create(ctx context.Context, task domain.Task) error {
 func (r *TaskRepository) Update(ctx context.Context, taskID string, patch domain.TaskPatch) error {
 	return r.store.Write(ctx, "update task", func(tx store.Tx) error {
 		qtx := tx.Queries()
+		if patch.ClearDueAt {
+			if err := qtx.ClearTaskDueAt(ctx, taskID); err != nil {
+				return err
+			}
+		}
 		arg := sqlc.UpdateTaskParams{
 			Title:         nullString(patch.Title),
 			DescriptionMd: nullString(patch.DescriptionMD),

@@ -323,8 +323,9 @@ func TestBoardUpdate_ByBoardID(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().String("db-path", "", "")
 	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("workspace-id", setup.Workspace.ID, "")
 	cmd.Flags().String("name", "Renamed Board", "")
-	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--name", "Renamed Board"}))
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--workspace-id", setup.Workspace.ID, "--name", "Renamed Board"}))
 	buf := new(strings.Builder)
 	cmd.SetOut(buf)
 
@@ -405,9 +406,10 @@ func TestBoardUpdate_JSON(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().String("db-path", "", "")
 	cmd.Flags().String("board-id", setup.Board.ID, "")
+	cmd.Flags().String("workspace-id", setup.Workspace.ID, "")
 	cmd.Flags().String("name", "JSON Rename", "")
 	cmd.Flags().Bool("json", false, "")
-	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--name", "JSON Rename", "--json"}))
+	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath, "--board-id", setup.Board.ID, "--workspace-id", setup.Workspace.ID, "--name", "JSON Rename", "--json"}))
 	buf := new(strings.Builder)
 	cmd.SetOut(buf)
 

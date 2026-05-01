@@ -312,6 +312,15 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 	return err
 }
 
+const clearTaskDueAt = `-- name: ClearTaskDueAt :exec
+UPDATE tasks SET due_at = NULL WHERE id = ?
+`
+
+func (q *Queries) ClearTaskDueAt(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, clearTaskDueAt, id)
+	return err
+}
+
 const getTask = `-- name: GetTask :one
 SELECT
   id,

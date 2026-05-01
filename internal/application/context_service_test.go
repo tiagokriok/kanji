@@ -50,7 +50,7 @@ func (r *fakeSetupRepo) CreateColumn(ctx context.Context, column domain.Column) 
 	r.columns = append(r.columns, column)
 	return nil
 }
-func (r *fakeSetupRepo) UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int) error {
+func (r *fakeSetupRepo) UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int, clearWIP bool) error {
 	for i, c := range r.columns {
 		if c.ID == columnID {
 			if name != nil {
@@ -58,6 +58,9 @@ func (r *fakeSetupRepo) UpdateColumn(ctx context.Context, columnID string, name,
 			}
 			if color != nil {
 				r.columns[i].Color = *color
+			}
+			if clearWIP {
+				r.columns[i].WIPLimit = nil
 			}
 			if wipLimit != nil {
 				r.columns[i].WIPLimit = wipLimit

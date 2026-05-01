@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -68,7 +70,10 @@ func runCommentCreate(cmd *cobra.Command, ns Namespace) error {
 
 	task, err := rt.TaskService.GetTask(ctx, taskID)
 	if err != nil {
-		return NewNotFound("task", taskID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return NewNotFound("task", taskID)
+		}
+		return err
 	}
 
 	// Resolve body.

@@ -28,6 +28,7 @@ type TaskPatch struct {
 	Status        *string
 	Priority      *int
 	DueAt         *time.Time
+	ClearDueAt    bool
 	ColumnID      *string
 	Labels        *[]string
 }

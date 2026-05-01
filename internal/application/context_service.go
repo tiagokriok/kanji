@@ -111,6 +111,7 @@ func (s *ContextService) CreateBoardWithColumns(
 		return domain.Board{}, err
 	}
 
+	var createdColumns []domain.Column
 	position := 1
 	created := 0
 	for i, input := range columns {
@@ -119,6 +120,9 @@ func (s *ContextService) CreateBoardWithColumns(
 			continue
 		}
 		color := strings.ToUpper(strings.TrimSpace(input.Color))
+		if color == "" {
+			color = NextDefaultColor(createdColumns)
+		}
 		if !hexColorPattern.MatchString(color) {
 			return domain.Board{}, fmt.Errorf("column %d color must be HEX (#RRGGBB)", i+1)
 		}
@@ -133,6 +137,7 @@ func (s *ContextService) CreateBoardWithColumns(
 		if err := s.repo.CreateColumn(ctx, c); err != nil {
 			return domain.Board{}, err
 		}
+		createdColumns = append(createdColumns, c)
 		position++
 		created++
 	}
@@ -194,8 +199,8 @@ func (s *ContextService) CreateColumn(ctx context.Context, boardID, name, color 
 	return column, nil
 }
 
-func (s *ContextService) UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int) error {
-	return s.repo.UpdateColumn(ctx, columnID, name, color, wipLimit)
+func (s *ContextService) UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int, clearWIP bool) error {
+	return s.repo.UpdateColumn(ctx, columnID, name, color, wipLimit, clearWIP)
 }
 
 func (s *ContextService) ReorderColumns(ctx context.Context, boardID string, orderedColumnIDs []string) error {

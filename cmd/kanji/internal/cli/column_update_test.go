@@ -76,7 +76,7 @@ func TestColumnUpdate_ClearWIPLimit(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set a WIP limit first.
-	_ = rt.ContextService.UpdateColumn(context.Background(), setup.Columns[0].ID, nil, nil, intPtr(5))
+	_ = rt.ContextService.UpdateColumn(context.Background(), setup.Columns[0].ID, nil, nil, intPtr(5), false)
 	rt.Close()
 
 	cmd := &cobra.Command{}
