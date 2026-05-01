@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/tiagokriok/kanji/internal/application"
+	"github.com/tiagokriok/kanji/internal/domain"
 )
 
 func newCommentCommand() *cobra.Command {
@@ -13,6 +16,7 @@ func newCommentCommand() *cobra.Command {
 		Short: "Comment operations",
 	}
 	c.AddCommand(newCommentListCommand())
+	c.AddCommand(newCommentGetCommand())
 	return c
 }
 
@@ -30,6 +34,108 @@ func newCommentListCommand() *cobra.Command {
 	}
 	cmd.Flags().String("task-id", "", "task ID")
 	return cmd
+}
+
+func newCommentGetCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "get",
+		Short: "Get a comment by ID",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runCommentGet(cmd, ns)
+		},
+	}
+	cmd.Flags().String("comment-id", "", "comment ID")
+	return cmd
+}
+
+func runCommentGet(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve comment.
+	var commentID string
+	if cmd.Flags().Changed("comment-id") {
+		commentID, _ = cmd.Flags().GetString("comment-id")
+	} else {
+		return NewValidation("comment-id is required")
+	}
+
+	// Search across all tasks.
+	workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+	if err != nil {
+		return err
+	}
+	var comment domain.Comment
+	found := false
+	for _, ws := range workspaces {
+		filters := application.ListTaskFilters{WorkspaceID: ws.ID}
+		tasks, err := rt.TaskFlow.ListTasks(ctx, filters)
+		if err != nil {
+			return err
+		}
+		for _, task := range tasks {
+			comments, err := rt.CommentService.ListComments(ctx, task.ID)
+			if err != nil {
+				return err
+			}
+			for _, c := range comments {
+				if c.ID == commentID {
+					comment = c
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		return NewNotFound("comment", commentID)
+	}
+
+	if cfg.JSON {
+		payload := map[string]interface{}{
+			"id":      comment.ID,
+			"task_id": comment.TaskID,
+			"body":    comment.BodyMD,
+		}
+		if comment.Author != nil {
+			payload["author"] = *comment.Author
+		}
+		return RenderWrappedJSON(cmd.OutOrStdout(), "comment", payload)
+	}
+
+	pairs := map[string]string{
+		"ID":      comment.ID,
+		"Task ID": comment.TaskID,
+		"Body":    comment.BodyMD,
+	}
+	if comment.Author != nil {
+		pairs["Author"] = *comment.Author
+	}
+	return RenderKV(cmd.OutOrStdout(), pairs)
 }
 
 func runCommentList(cmd *cobra.Command, ns Namespace) error {
