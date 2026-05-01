@@ -28,6 +28,7 @@ Use "kanji help" for available commands.
 	root.PersistentFlags().Bool("verbose", false, "enable verbose output")
 
 	root.AddCommand(newDataCommand())
+	root.AddCommand(newHelpCommand())
 
 	return root
 }
