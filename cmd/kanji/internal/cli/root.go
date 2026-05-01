@@ -36,6 +36,7 @@ Use "kanji help" for available commands.
 	root.AddCommand(newColumnCommand())
 	root.AddCommand(newTaskCommand())
 	root.AddCommand(newCommentCommand())
+	root.AddCommand(newTUICommand())
 
 	return root
 }
