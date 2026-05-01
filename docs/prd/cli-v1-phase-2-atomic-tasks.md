@@ -1,6 +1,6 @@
 # Kanji CLI v1 Phase 2 Atomic Tasks and Sequenced Issue List
 
-Status: Draft
+Status: Done
 Parent blueprint: `docs/prd/cli-v1.md`
 Prerequisite: Phase 1 complete
 Scope: Phase 2 only
@@ -74,46 +74,46 @@ Conventions:
 
 ### Shared write foundations
 
-- [ ] **P2-01** Add write-command shared validation helpers
-- [ ] **P2-02** Add rich text input source parsing helpers
-- [ ] **P2-03** Add priority parsing helper
-- [ ] **P2-04** Add due-date parsing helper
-- [ ] **P2-05** Add write-scope resolution helpers
-- [ ] **P2-06** Add standardized write success/result render helpers
+- [x] **P2-01** Add write-command shared validation helpers
+- [x] **P2-02** Add rich text input source parsing helpers
+- [x] **P2-03** Add priority parsing helper
+- [x] **P2-04** Add due-date parsing helper
+- [x] **P2-05** Add write-scope resolution helpers
+- [x] **P2-06** Add standardized write success/result render helpers
 
 ### Workspace / board writes
 
-- [ ] **P2-07** Add `workspace create`
-- [ ] **P2-08** Add `workspace update`
-- [ ] **P2-09** Add board column spec parser for `board create`
-- [ ] **P2-10** Add `board create`
-- [ ] **P2-11** Add `board update`
+- [x] **P2-07** Add `workspace create`
+- [x] **P2-08** Add `workspace update`
+- [x] **P2-09** Add board column spec parser for `board create`
+- [x] **P2-10** Add `board create`
+- [x] **P2-11** Add `board update`
 
 ### Column writes
 
-- [ ] **P2-12** Add deterministic default color helper for standalone column create
-- [ ] **P2-13** Add `column create`
-- [ ] **P2-14** Add `column update`
-- [ ] **P2-15** Add `column reorder`
+- [x] **P2-12** Add deterministic default color helper for standalone column create
+- [x] **P2-13** Add `column create`
+- [x] **P2-14** Add `column update`
+- [x] **P2-15** Add `column reorder`
 
 ### Task writes
 
-- [ ] **P2-16** Add task-create input assembly helpers
-- [ ] **P2-17** Add `task create`
-- [ ] **P2-18** Add task-update patch assembly helpers
-- [ ] **P2-19** Add `task update`
-- [ ] **P2-20** Add task destination-column resolution helpers for moves
-- [ ] **P2-21** Add `task move`
-- [ ] **P2-22** Add `task delete`
+- [x] **P2-16** Add task-create input assembly helpers
+- [x] **P2-17** Add `task create`
+- [x] **P2-18** Add task-update patch assembly helpers
+- [x] **P2-19** Add `task update`
+- [x] **P2-20** Add task destination-column resolution helpers for moves
+- [x] **P2-21** Add `task move`
+- [x] **P2-22** Add `task delete`
 
 ### Comment writes
 
-- [ ] **P2-23** Add `comment create`
+- [x] **P2-23** Add `comment create`
 
 ### Help/docs hardening for phase 2 commands
 
-- [ ] **P2-24** Add curated help/examples for all phase 2 write commands
-- [ ] **P2-25** Update generated CLI docs and README examples for phase 2 write flows
+- [x] **P2-24** Add curated help/examples for all phase 2 write commands
+- [x] **P2-25** Update generated CLI docs and README examples for phase 2 write flows
 
 ---
 
