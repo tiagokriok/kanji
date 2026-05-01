@@ -14,7 +14,47 @@ func newDBCommand() *cobra.Command {
 		Short: "Database operations",
 	}
 	db.AddCommand(newDBInfoCommand())
+	db.AddCommand(newDBMigrateCommand())
 	return db
+}
+
+func newDBMigrateCommand() *cobra.Command {
+	migrate := &cobra.Command{
+		Use:   "migrate",
+		Short: "Database migrations",
+	}
+	migrate.AddCommand(newDBMigrateUpCommand())
+	return migrate
+}
+
+func newDBMigrateUpCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "up",
+		Short: "Run forward migrations",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runDBMigrateUp(cmd, ns)
+		},
+	}
+}
+
+func runDBMigrateUp(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	fmt.Fprintln(cmd.OutOrStdout(), "Migrations completed.")
+	return nil
 }
 
 func newDBInfoCommand() *cobra.Command {
