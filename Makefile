@@ -30,7 +30,7 @@ SHELL := /bin/bash
 ## Core variables (override with `make <target> VAR=value`)
 ## -----------------------------------------------------------------------------
 APP_NAME            ?= kanji
-MAIN_PKG            ?= ./cmd/app
+MAIN_PKG            ?= ./cmd/kanji
 OUT_DIR             ?= ./bin
 BIN_PATH            ?= $(OUT_DIR)/$(APP_NAME)
 DB_PATH             ?= $(HOME)/.config/$(APP_NAME)/app.db
