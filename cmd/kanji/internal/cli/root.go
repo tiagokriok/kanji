@@ -23,6 +23,10 @@ Use "kanji help" for available commands.
 		},
 	}
 
+	root.PersistentFlags().String("db-path", "", "path to SQLite database (env: KANJI_DB_PATH)")
+	root.PersistentFlags().Bool("json", false, "output in JSON format")
+	root.PersistentFlags().Bool("verbose", false, "enable verbose output")
+
 	return root
 }
 
