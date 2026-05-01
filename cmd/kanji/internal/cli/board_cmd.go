@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tiagokriok/kanji/internal/domain"
 	"github.com/tiagokriok/kanji/internal/state"
 )
 
@@ -14,6 +15,7 @@ func newBoardCommand() *cobra.Command {
 		Short: "Board operations",
 	}
 	b.AddCommand(newBoardListCommand())
+	b.AddCommand(newBoardGetCommand())
 	return b
 }
 
@@ -32,6 +34,131 @@ func newBoardListCommand() *cobra.Command {
 	cmd.Flags().String("workspace-id", "", "workspace ID")
 	cmd.Flags().String("workspace", "", "workspace name")
 	return cmd
+}
+
+func newBoardGetCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "get",
+		Short: "Get a board by ID or name",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runBoardGet(cmd, ns)
+		},
+	}
+	cmd.Flags().String("board-id", "", "board ID")
+	cmd.Flags().String("board", "", "board name")
+	cmd.Flags().String("workspace-id", "", "workspace ID (required for name resolution)")
+	cmd.Flags().String("workspace", "", "workspace name (required for name resolution)")
+	return cmd
+}
+
+func runBoardGet(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve board.
+	var board domain.Board
+	if cmd.Flags().Changed("board-id") {
+		id, _ := cmd.Flags().GetString("board-id")
+		// Need to find board across all workspaces.
+		workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, ws := range workspaces {
+			boards, err := rt.ContextService.ListBoards(ctx, ws.ID)
+			if err != nil {
+				return err
+			}
+			for _, b := range boards {
+				if b.ID == id {
+					board = b
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("board", id)
+		}
+	} else if cmd.Flags().Changed("board") {
+		name, _ := cmd.Flags().GetString("board")
+		// Need workspace scope.
+		var workspaceID string
+		if cmd.Flags().Changed("workspace-id") {
+			workspaceID, _ = cmd.Flags().GetString("workspace-id")
+		} else if cmd.Flags().Changed("workspace") {
+			wsName, _ := cmd.Flags().GetString("workspace")
+			workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+			if err != nil {
+				return err
+			}
+			found := false
+			for _, ws := range workspaces {
+				if ExactMatch(ws.Name, wsName) {
+					workspaceID = ws.ID
+					found = true
+					break
+				}
+			}
+			if !found {
+				return NewNotFound("workspace", wsName)
+			}
+		} else {
+			return NewValidation("workspace scope required for board name resolution")
+		}
+
+		boards, err := rt.ContextService.ListBoards(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, b := range boards {
+			if ExactMatch(b.Name, name) {
+				board = b
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("board", name)
+		}
+	} else {
+		return NewValidation("board-id or board is required")
+	}
+
+	if cfg.JSON {
+		return RenderWrappedJSON(cmd.OutOrStdout(), "board", map[string]string{
+			"id":   board.ID,
+			"name": board.Name,
+		})
+	}
+
+	return RenderKV(cmd.OutOrStdout(), map[string]string{
+		"ID":   board.ID,
+		"Name": board.Name,
+	})
 }
 
 func runBoardList(cmd *cobra.Command, ns Namespace) error {
