@@ -2,9 +2,11 @@ package cli
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
+	"github.com/tiagokriok/kanji/internal/application"
 	"github.com/tiagokriok/kanji/internal/domain"
 	"github.com/tiagokriok/kanji/internal/state"
 )
@@ -16,6 +18,8 @@ func newBoardCommand() *cobra.Command {
 	}
 	b.AddCommand(newBoardListCommand())
 	b.AddCommand(newBoardGetCommand())
+	b.AddCommand(newBoardCreateCommand())
+	b.AddCommand(newBoardUpdateCommand())
 	return b
 }
 
@@ -53,6 +57,253 @@ func newBoardGetCommand() *cobra.Command {
 	cmd.Flags().String("workspace-id", "", "workspace ID (required for name resolution)")
 	cmd.Flags().String("workspace", "", "workspace name (required for name resolution)")
 	return cmd
+}
+
+func newBoardCreateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a new board",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runBoardCreate(cmd, ns)
+		},
+	}
+	cmd.Flags().String("name", "", "board name (required)")
+	cmd.Flags().String("workspace-id", "", "workspace ID")
+	cmd.Flags().String("workspace", "", "workspace name")
+	cmd.Flags().StringArray("column", nil, `column spec "Name:#RRGGBB" (can be repeated)`)
+	cmd.Flags().Bool("set-context", false, "set board context after creation")
+	return cmd
+}
+
+func newBoardUpdateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Update a board name",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runBoardUpdate(cmd, ns)
+		},
+	}
+	cmd.Flags().String("board-id", "", "board ID")
+	cmd.Flags().String("board", "", "board name")
+	cmd.Flags().String("workspace-id", "", "workspace ID (required for name resolution)")
+	cmd.Flags().String("workspace", "", "workspace name (required for name resolution)")
+	cmd.Flags().String("name", "", "new board name (required)")
+	return cmd
+}
+
+func runBoardCreate(cmd *cobra.Command, ns Namespace) error {
+	store, err := defaultStateStore()
+	if err != nil {
+		return err
+	}
+	return runBoardCreateWithStore(cmd, ns, store)
+}
+
+func runBoardCreateWithStore(cmd *cobra.Command, ns Namespace, store *state.Store) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve workspace scope.
+	workspaceID, _, err := ResolveWorkspaceScope(cmd, rt, store, ns)
+	if err != nil {
+		return err
+	}
+
+	// Validate name.
+	if !cmd.Flags().Changed("name") {
+		return NewValidation("name is required")
+	}
+	name, _ := cmd.Flags().GetString("name")
+	if name == "" {
+		return NewValidation("name is required")
+	}
+
+	// Parse columns.
+	var board domain.Board
+	columnRaws, _ := cmd.Flags().GetStringArray("column")
+	if len(columnRaws) > 0 {
+		specs, err := ParseColumnSpecs(columnRaws)
+		if err != nil {
+			return err
+		}
+		inputs := make([]application.CreateBoardColumnInput, len(specs))
+		for i, s := range specs {
+			inputs[i] = application.CreateBoardColumnInput{Name: s.Name, Color: s.Color}
+		}
+		board, err = rt.ContextService.CreateBoardWithColumns(ctx, workspaceID, name, inputs)
+		if err != nil {
+			return err
+		}
+	} else {
+		board, err = rt.ContextService.CreateBoard(ctx, workspaceID, name)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Optionally set context.
+	setCtx, _ := cmd.Flags().GetBool("set-context")
+	if setCtx {
+		if err := store.SetCLIContext(ns.Key, state.CLIContext{
+			WorkspaceID: workspaceID,
+			BoardID:     board.ID,
+		}); err != nil {
+			return err
+		}
+	}
+
+	if cfg.JSON {
+		return RenderWriteResultJSON(cmd.OutOrStdout(), "board", map[string]interface{}{
+			"id":   board.ID,
+			"name": board.Name,
+		})
+	}
+
+	return RenderWriteResult(cmd.OutOrStdout(), "Board", board.ID, map[string]string{
+		"Name": board.Name,
+	})
+}
+
+func runBoardUpdate(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve board.
+	var boardID string
+	if cmd.Flags().Changed("board-id") {
+		id, _ := cmd.Flags().GetString("board-id")
+		// Validate existence by searching across workspaces.
+		workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, ws := range workspaces {
+			boards, err := rt.ContextService.ListBoards(ctx, ws.ID)
+			if err != nil {
+				return err
+			}
+			for _, b := range boards {
+				if b.ID == id {
+					boardID = b.ID
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("board", id)
+		}
+	} else if cmd.Flags().Changed("board") {
+		name, _ := cmd.Flags().GetString("board")
+		// Need workspace scope.
+		var workspaceID string
+		if cmd.Flags().Changed("workspace-id") {
+			workspaceID, _ = cmd.Flags().GetString("workspace-id")
+		} else if cmd.Flags().Changed("workspace") {
+			wsName, _ := cmd.Flags().GetString("workspace")
+			workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+			if err != nil {
+				return err
+			}
+			found := false
+			for _, ws := range workspaces {
+				if ExactMatch(ws.Name, wsName) {
+					workspaceID = ws.ID
+					found = true
+					break
+				}
+			}
+			if !found {
+				return NewNotFound("workspace", wsName)
+			}
+		} else {
+			return NewValidation("workspace scope required for board name resolution")
+		}
+
+		boards, err := rt.ContextService.ListBoards(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, b := range boards {
+			if ExactMatch(b.Name, name) {
+				boardID = b.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("board", name)
+		}
+	} else {
+		return NewValidation("board-id or board is required")
+	}
+
+	// Validate name.
+	if !cmd.Flags().Changed("name") {
+		return NewValidation("name is required")
+	}
+	name, _ := cmd.Flags().GetString("name")
+	if name == "" {
+		return NewValidation("name is required")
+	}
+
+	if err := rt.ContextService.RenameBoard(ctx, boardID, name); err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		return RenderWriteResultJSON(cmd.OutOrStdout(), "board", map[string]interface{}{
+			"id":   boardID,
+			"name": name,
+		})
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), "Board updated")
+	return RenderKV(cmd.OutOrStdout(), map[string]string{
+		"ID":   boardID,
+		"Name": name,
+	})
 }
 
 func runBoardGet(cmd *cobra.Command, ns Namespace) error {
