@@ -1,6 +1,6 @@
 # Kanji CLI v1 Phase 1 Atomic Tasks and Sequenced Issue List
 
-Status: Draft
+Status: Done
 Parent blueprint: `docs/prd/cli-v1.md`
 Scope: Phase 1 only
 Goal: Break Phase 1 into atomic one-session tasks and a sequenced issue list with titles and acceptance criteria
@@ -48,46 +48,46 @@ Conventions:
 
 ### Foundation spine
 
-- [ ] **P1-01** Create new CLI entrypoint skeleton
-- [ ] **P1-02** Add global runtime/config plumbing
-- [ ] **P1-03** Add namespace resolution helper
-- [ ] **P1-04** Add shared namespaced state store
-- [ ] **P1-07** Add bootstrap/runtime app wiring helper
-- [ ] **P1-08** Add `data bootstrap`
-- [ ] **P1-09** Add bootstrap guard helper for domain commands
-- [ ] **P1-14** Add root topic help commands
-- [ ] **P1-15** Add shared selector validation layer skeleton
-- [ ] **P1-17** Add shared output rendering helpers
+- [x] **P1-01** Create new CLI entrypoint skeleton
+- [x] **P1-02** Add global runtime/config plumbing
+- [x] **P1-03** Add namespace resolution helper
+- [x] **P1-04** Add shared namespaced state store
+- [x] **P1-07** Add bootstrap/runtime app wiring helper
+- [x] **P1-08** Add `data bootstrap`
+- [x] **P1-09** Add bootstrap guard helper for domain commands
+- [x] **P1-14** Add root topic help commands
+- [x] **P1-15** Add shared selector validation layer skeleton
+- [x] **P1-17** Add shared output rendering helpers
 
 ### Context + ops
 
-- [ ] **P1-05** Add `context show`
-- [ ] **P1-06** Add `context clear`
-- [ ] **P1-16** Add `context set`
-- [ ] **P1-10** Add `db info`
-- [ ] **P1-11** Add `db migrate up`
-- [ ] **P1-12** Add `db migrate status`
-- [ ] **P1-13** Add `data seed`
-- [ ] **P1-28** Add `db doctor`
+- [x] **P1-05** Add `context show`
+- [x] **P1-06** Add `context clear`
+- [x] **P1-16** Add `context set`
+- [x] **P1-10** Add `db info`
+- [x] **P1-11** Add `db migrate up`
+- [x] **P1-12** Add `db migrate status`
+- [x] **P1-13** Add `data seed`
+- [x] **P1-28** Add `db doctor`
 
 ### Read surface
 
-- [ ] **P1-18** Add `workspace list`
-- [ ] **P1-19** Add `workspace get`
-- [ ] **P1-20** Add `board list`
-- [ ] **P1-21** Add `board get`
-- [ ] **P1-22** Add `column list`
-- [ ] **P1-23** Add `column get`
-- [ ] **P1-24** Add `task list`
-- [ ] **P1-25** Add `task get`
-- [ ] **P1-26** Add `comment list`
-- [ ] **P1-27** Add `comment get`
+- [x] **P1-18** Add `workspace list`
+- [x] **P1-19** Add `workspace get`
+- [x] **P1-20** Add `board list`
+- [x] **P1-21** Add `board get`
+- [x] **P1-22** Add `column list`
+- [x] **P1-23** Add `column get`
+- [x] **P1-24** Add `task list`
+- [x] **P1-25** Add `task get`
+- [x] **P1-26** Add `comment list`
+- [x] **P1-27** Add `comment get`
 
 ### TUI cutover + docs
 
-- [ ] **P1-29** Add `kanji tui` command and rewire TUI startup
-- [ ] **P1-30** Cut over from `cmd/app` to `cmd/kanji`
-- [ ] **P1-31** Generate initial CLI docs under `docs/cli/`
+- [x] **P1-29** Add `kanji tui` command and rewire TUI startup
+- [x] **P1-30** Cut over from `cmd/app` to `cmd/kanji`
+- [x] **P1-31** Generate initial CLI docs under `docs/cli/`
 
 ---
 
