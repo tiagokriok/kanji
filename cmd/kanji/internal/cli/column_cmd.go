@@ -18,6 +18,7 @@ func newColumnCommand() *cobra.Command {
 	c.AddCommand(newColumnListCommand())
 	c.AddCommand(newColumnGetCommand())
 	c.AddCommand(newColumnCreateCommand())
+	c.AddCommand(newColumnUpdateCommand())
 	c.AddCommand(newColumnReorderCommand())
 	return c
 }
@@ -510,4 +511,125 @@ func runColumnListWithStore(cmd *cobra.Command, ns Namespace, store *state.Store
 		rows[i] = []string{c.ID, c.Name, c.Color, fmt.Sprintf("%d", c.Position), wip}
 	}
 	return RenderTable(cmd.OutOrStdout(), headers, rows)
+}
+
+func newColumnUpdateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Update a column by ID",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runColumnUpdate(cmd, ns)
+		},
+	}
+	cmd.Flags().String("column-id", "", "column ID")
+	cmd.Flags().String("name", "", "new name")
+	cmd.Flags().String("color", "", "new hex color")
+	cmd.Flags().Int("wip-limit", 0, "WIP limit")
+	cmd.Flags().Bool("clear-wip-limit", false, "clear WIP limit")
+	return cmd
+}
+
+func runColumnUpdate(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	if !cmd.Flags().Changed("column-id") {
+		return NewValidation("column-id is required")
+	}
+	columnID, _ := cmd.Flags().GetString("column-id")
+
+	var name, color *string
+	var wipLimit *int
+
+	if cmd.Flags().Changed("name") {
+		v, _ := cmd.Flags().GetString("name")
+		name = &v
+	}
+	if cmd.Flags().Changed("color") {
+		v, _ := cmd.Flags().GetString("color")
+		color = &v
+	}
+	if cmd.Flags().Changed("wip-limit") && cmd.Flags().Changed("clear-wip-limit") {
+		return NewValidation("cannot use both --wip-limit and --clear-wip-limit")
+	}
+	if cmd.Flags().Changed("wip-limit") {
+		v, _ := cmd.Flags().GetInt("wip-limit")
+		wipLimit = &v
+	}
+	if cmd.Flags().Changed("clear-wip-limit") {
+		v := 0
+		wipLimit = &v
+	}
+
+	if name == nil && color == nil && wipLimit == nil {
+		return NewValidation("at least one of --name, --color, --wip-limit, --clear-wip-limit is required")
+	}
+
+	if err := rt.ContextService.UpdateColumn(ctx, columnID, name, color, wipLimit); err != nil {
+		return err
+	}
+
+	// Fetch updated column for output.
+	var updated domain.Column
+	workspaces, _ := rt.ContextService.ListWorkspaces(ctx)
+	for _, ws := range workspaces {
+		boards, _ := rt.ContextService.ListBoards(ctx, ws.ID)
+		for _, b := range boards {
+			cols, _ := rt.ContextService.ListColumns(ctx, b.ID)
+			for _, c := range cols {
+				if c.ID == columnID {
+					updated = c
+					break
+				}
+			}
+			if updated.ID != "" {
+				break
+			}
+		}
+		if updated.ID != "" {
+			break
+		}
+	}
+
+	if cfg.JSON {
+		payload := map[string]interface{}{
+			"id":       updated.ID,
+			"name":     updated.Name,
+			"color":    updated.Color,
+			"position": updated.Position,
+		}
+		if updated.WIPLimit != nil {
+			payload["wip_limit"] = *updated.WIPLimit
+		}
+		return RenderWrappedJSON(cmd.OutOrStdout(), "column", payload)
+	}
+
+	pairs := map[string]string{
+		"ID":       updated.ID,
+		"Name":     updated.Name,
+		"Color":    updated.Color,
+		"Position": fmt.Sprintf("%d", updated.Position),
+	}
+	if updated.WIPLimit != nil {
+		pairs["WIP Limit"] = fmt.Sprintf("%d", *updated.WIPLimit)
+	}
+	return RenderKV(cmd.OutOrStdout(), pairs)
 }

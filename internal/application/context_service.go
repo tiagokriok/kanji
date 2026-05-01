@@ -194,6 +194,10 @@ func (s *ContextService) CreateColumn(ctx context.Context, boardID, name, color 
 	return column, nil
 }
 
+func (s *ContextService) UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int) error {
+	return s.repo.UpdateColumn(ctx, columnID, name, color, wipLimit)
+}
+
 func (s *ContextService) ReorderColumns(ctx context.Context, boardID string, orderedColumnIDs []string) error {
 	boardID = strings.TrimSpace(boardID)
 	if boardID == "" {

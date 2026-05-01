@@ -585,3 +585,45 @@ func (q *Queries) UpdateColumnPosition(ctx context.Context, arg UpdateColumnPosi
 	}
 	return result.RowsAffected()
 }
+
+const updateColumnName = `-- name: UpdateColumnName :exec
+UPDATE columns SET name = ? WHERE id = ?
+`
+
+type UpdateColumnNameParams struct {
+	Name string
+	ID   string
+}
+
+func (q *Queries) UpdateColumnName(ctx context.Context, arg UpdateColumnNameParams) error {
+	_, err := q.db.ExecContext(ctx, updateColumnName, arg.Name, arg.ID)
+	return err
+}
+
+const updateColumnColor = `-- name: UpdateColumnColor :exec
+UPDATE columns SET color = ? WHERE id = ?
+`
+
+type UpdateColumnColorParams struct {
+	Color string
+	ID    string
+}
+
+func (q *Queries) UpdateColumnColor(ctx context.Context, arg UpdateColumnColorParams) error {
+	_, err := q.db.ExecContext(ctx, updateColumnColor, arg.Color, arg.ID)
+	return err
+}
+
+const updateColumnWIPLimit = `-- name: UpdateColumnWIPLimit :exec
+UPDATE columns SET wip_limit = ? WHERE id = ?
+`
+
+type UpdateColumnWIPLimitParams struct {
+	WipLimit sql.NullInt64
+	ID       string
+}
+
+func (q *Queries) UpdateColumnWIPLimit(ctx context.Context, arg UpdateColumnWIPLimitParams) error {
+	_, err := q.db.ExecContext(ctx, updateColumnWIPLimit, arg.WipLimit, arg.ID)
+	return err
+}

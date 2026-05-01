@@ -142,6 +142,42 @@ func (r *SetupRepository) CreateColumn(ctx context.Context, column domain.Column
 	})
 }
 
+func (r *SetupRepository) UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int) error {
+	columnID = strings.TrimSpace(columnID)
+	if columnID == "" {
+		return fmt.Errorf("column id is required")
+	}
+
+	return r.store.Write(ctx, "update column", func(tx store.Tx) error {
+		qtx := tx.Queries()
+		if name != nil && strings.TrimSpace(*name) != "" {
+			if err := qtx.UpdateColumnName(ctx, sqlc.UpdateColumnNameParams{
+				Name: strings.TrimSpace(*name),
+				ID:   columnID,
+			}); err != nil {
+				return fmt.Errorf("update column name: %w", err)
+			}
+		}
+		if color != nil {
+			if err := qtx.UpdateColumnColor(ctx, sqlc.UpdateColumnColorParams{
+				Color: normalizeHexColor(*color),
+				ID:    columnID,
+			}); err != nil {
+				return fmt.Errorf("update column color: %w", err)
+			}
+		}
+		if wipLimit != nil {
+			if err := qtx.UpdateColumnWIPLimit(ctx, sqlc.UpdateColumnWIPLimitParams{
+				WipLimit: nullInt(wipLimit),
+				ID:       columnID,
+			}); err != nil {
+				return fmt.Errorf("update column wip limit: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
 func (r *SetupRepository) ReorderColumns(ctx context.Context, boardID string, orderedColumnIDs []string) error {
 	boardID = strings.TrimSpace(boardID)
 	if boardID == "" {

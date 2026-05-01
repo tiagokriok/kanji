@@ -45,6 +45,7 @@ func (r *mockSetupRepo) ListColumns(ctx context.Context, boardID string) ([]doma
 	return r.columns, r.err
 }
 func (r *mockSetupRepo) CreateColumn(ctx context.Context, c domain.Column) error { return r.err }
+func (r *mockSetupRepo) UpdateColumn(ctx context.Context, columnID string, name, color *string, wipLimit *int) error { return r.err }
 func (r *mockSetupRepo) ReorderColumns(ctx context.Context, boardID string, ids []string) error {
 	return r.err
 }
