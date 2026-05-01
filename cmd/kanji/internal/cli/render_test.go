@@ -103,3 +103,71 @@ func TestRenderJSONError_WithDetails(t *testing.T) {
 	assert.Contains(t, output, `"details"`)
 	assert.Contains(t, output, "name is required")
 }
+
+func TestRenderWriteResult(t *testing.T) {
+	buf := new(strings.Builder)
+	err := RenderWriteResult(buf, "workspace", "ws-1", map[string]string{
+		"name":   "Default Workspace",
+		"boards": "3",
+	})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "workspace created")
+	assert.Contains(t, output, "ID:")
+	assert.Contains(t, output, "ws-1")
+	assert.Contains(t, output, "name:")
+	assert.Contains(t, output, "Default Workspace")
+	assert.Contains(t, output, "boards:")
+	assert.Contains(t, output, "3")
+}
+
+func TestRenderWriteResult_EmptyFields(t *testing.T) {
+	buf := new(strings.Builder)
+	err := RenderWriteResult(buf, "board", "bd-1", map[string]string{})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "board created")
+	assert.Contains(t, output, "ID:")
+	assert.Contains(t, output, "bd-1")
+}
+
+func TestRenderWriteResultJSON(t *testing.T) {
+	buf := new(strings.Builder)
+	err := RenderWriteResultJSON(buf, "workspace", map[string]interface{}{
+		"id":   "ws-1",
+		"name": "Default Workspace",
+	})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, `"workspace"`)
+	assert.Contains(t, output, `"id"`)
+	assert.Contains(t, output, `"name"`)
+}
+
+func TestRenderWriteResolved(t *testing.T) {
+	buf := new(strings.Builder)
+	err := RenderWriteResolved(buf, map[string]string{
+		"workspace": "flag",
+		"board":     "context",
+	})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Resolved from:")
+	assert.Contains(t, output, "workspace")
+	assert.Contains(t, output, "flag")
+	assert.Contains(t, output, "board")
+	assert.Contains(t, output, "context")
+}
+
+func TestRenderWriteResolved_Empty(t *testing.T) {
+	buf := new(strings.Builder)
+	err := RenderWriteResolved(buf, map[string]string{})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Empty(t, output)
+}

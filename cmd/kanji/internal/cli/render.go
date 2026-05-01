@@ -115,6 +115,33 @@ func RenderJSONError(w io.Writer, code, message string, details ...string) error
 	return encodeJSON(w, wrapper)
 }
 
+// RenderWriteResult writes a human-readable success block for create/update
+// operations. It prints the resource name, ID, and any additional fields as
+// aligned key/value pairs.
+func RenderWriteResult(w io.Writer, resourceName, id string, fields map[string]string) error {
+	fmt.Fprintf(w, "%s created\n", resourceName)
+	pairs := map[string]string{"ID": id}
+	for k, v := range fields {
+		pairs[k] = v
+	}
+	return RenderKV(w, pairs)
+}
+
+// RenderWriteResultJSON writes a wrapped JSON payload for write success.
+func RenderWriteResultJSON(w io.Writer, resourceName string, data map[string]interface{}) error {
+	return RenderWrappedJSON(w, resourceName, data)
+}
+
+// RenderWriteResolved writes an optional human metadata block showing context
+// resolution sources. If resolved is empty, it writes nothing.
+func RenderWriteResolved(w io.Writer, resolved map[string]string) error {
+	if len(resolved) == 0 {
+		return nil
+	}
+	fmt.Fprintln(w, "Resolved from:")
+	return RenderKV(w, resolved)
+}
+
 func encodeJSON(w io.Writer, v interface{}) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
