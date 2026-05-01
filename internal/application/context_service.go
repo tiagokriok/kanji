@@ -148,6 +148,52 @@ func (s *ContextService) RenameBoard(ctx context.Context, boardID, name string) 
 	return s.repo.RenameBoard(ctx, boardID, name)
 }
 
+func (s *ContextService) CreateColumn(ctx context.Context, boardID, name, color string, wipLimit *int) (domain.Column, error) {
+	boardID = strings.TrimSpace(boardID)
+	name = strings.TrimSpace(name)
+	if boardID == "" {
+		return domain.Column{}, errors.New("board id is required")
+	}
+	if name == "" {
+		return domain.Column{}, errors.New("column name is required")
+	}
+
+	columns, err := s.repo.ListColumns(ctx, boardID)
+	if err != nil {
+		return domain.Column{}, err
+	}
+
+	color = strings.ToUpper(strings.TrimSpace(color))
+	if color == "" {
+		color = NextDefaultColor(columns)
+	}
+	if !hexColorPattern.MatchString(color) {
+		return domain.Column{}, errors.New("color must be HEX (#RRGGBB)")
+	}
+
+	position := 1
+	for _, c := range columns {
+		if c.Position >= position {
+			position = c.Position + 1
+		}
+	}
+
+	column := domain.Column{
+		ID:       uuid.NewString(),
+		BoardID:  boardID,
+		Name:     name,
+		Color:    color,
+		Position: position,
+		WIPLimit: wipLimit,
+	}
+
+	if err := s.repo.CreateColumn(ctx, column); err != nil {
+		return domain.Column{}, err
+	}
+
+	return column, nil
+}
+
 func (s *ContextService) ReorderColumns(ctx context.Context, boardID string, orderedColumnIDs []string) error {
 	boardID = strings.TrimSpace(boardID)
 	if boardID == "" {
@@ -155,6 +201,15 @@ func (s *ContextService) ReorderColumns(ctx context.Context, boardID string, ord
 	}
 	if len(orderedColumnIDs) == 0 {
 		return errors.New("at least one column id is required")
+	}
+
+	existing, err := s.repo.ListColumns(ctx, boardID)
+	if err != nil {
+		return err
+	}
+	existingSet := make(map[string]struct{}, len(existing))
+	for _, c := range existing {
+		existingSet[c.ID] = struct{}{}
 	}
 
 	seen := make(map[string]struct{}, len(orderedColumnIDs))
@@ -166,8 +221,17 @@ func (s *ContextService) ReorderColumns(ctx context.Context, boardID string, ord
 		if _, ok := seen[id]; ok {
 			return fmt.Errorf("duplicate column id at position %d", i+1)
 		}
+		if _, ok := existingSet[id]; !ok {
+			return fmt.Errorf("column %s not found in board", id)
+		}
 		seen[id] = struct{}{}
 		orderedColumnIDs[i] = id
+	}
+
+	for _, c := range existing {
+		if _, ok := seen[c.ID]; !ok {
+			return fmt.Errorf("column %s not included in reorder", c.ID)
+		}
 	}
 
 	return s.repo.ReorderColumns(ctx, boardID, orderedColumnIDs)

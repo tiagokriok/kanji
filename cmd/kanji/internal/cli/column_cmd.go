@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tiagokriok/kanji/internal/domain"
+	"github.com/tiagokriok/kanji/internal/state"
 )
 
 func newColumnCommand() *cobra.Command {
@@ -16,6 +17,8 @@ func newColumnCommand() *cobra.Command {
 	}
 	c.AddCommand(newColumnListCommand())
 	c.AddCommand(newColumnGetCommand())
+	c.AddCommand(newColumnCreateCommand())
+	c.AddCommand(newColumnReorderCommand())
 	return c
 }
 
@@ -34,6 +37,250 @@ func newColumnListCommand() *cobra.Command {
 	cmd.Flags().String("board-id", "", "board ID")
 	cmd.Flags().String("board", "", "board name")
 	return cmd
+}
+
+func newColumnCreateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a new column",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runColumnCreate(cmd, ns)
+		},
+	}
+	cmd.Flags().String("name", "", "column name")
+	cmd.Flags().String("color", "", "column color (hex)")
+	cmd.Flags().Int("wip-limit", 0, "WIP limit")
+	cmd.Flags().String("board-id", "", "board ID")
+	cmd.Flags().String("board", "", "board name")
+	return cmd
+}
+
+func newColumnReorderCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "reorder",
+		Short: "Reorder board columns",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runColumnReorder(cmd, ns)
+		},
+	}
+	cmd.Flags().StringArray("column-id", nil, "column ID (repeat for order)")
+	cmd.Flags().String("board-id", "", "board ID")
+	cmd.Flags().String("board", "", "board name")
+	return cmd
+}
+
+func runColumnCreate(cmd *cobra.Command, ns Namespace) error {
+	store, err := defaultStateStore()
+	if err != nil {
+		return err
+	}
+	return runColumnCreateWithStore(cmd, ns, store)
+}
+
+func runColumnCreateWithStore(cmd *cobra.Command, ns Namespace, store *state.Store) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve board scope.
+	var boardID string
+	if cmd.Flags().Changed("board-id") {
+		boardID, _ = cmd.Flags().GetString("board-id")
+	} else if cmd.Flags().Changed("board") {
+		name, _ := cmd.Flags().GetString("board")
+		cliCtx, _ := store.GetCLIContext(ns.Key)
+		workspaceID := cliCtx.WorkspaceID
+		if workspaceID == "" {
+			workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+			if err != nil {
+				return err
+			}
+			if len(workspaces) == 1 {
+				workspaceID = workspaces[0].ID
+			} else {
+				return NewValidation("board-id or board with workspace scope is required")
+			}
+		}
+		boards, err := rt.ContextService.ListBoards(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, b := range boards {
+			if ExactMatch(b.Name, name) {
+				boardID = b.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("board", name)
+		}
+	} else {
+		cliCtx, _ := store.GetCLIContext(ns.Key)
+		if cliCtx.BoardID != "" {
+			boardID = cliCtx.BoardID
+		} else {
+			return NewValidation("board scope required: use --board-id, --board, or kanji context set")
+		}
+	}
+
+	if !cmd.Flags().Changed("name") {
+		return NewValidation("name is required")
+	}
+	name, _ := cmd.Flags().GetString("name")
+
+	var color string
+	if cmd.Flags().Changed("color") {
+		color, _ = cmd.Flags().GetString("color")
+	}
+
+	var wipLimit *int
+	if cmd.Flags().Changed("wip-limit") {
+		wip, _ := cmd.Flags().GetInt("wip-limit")
+		wipLimit = &wip
+	}
+
+	column, err := rt.ContextService.CreateColumn(ctx, boardID, name, color, wipLimit)
+	if err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		payload := map[string]interface{}{
+			"id":       column.ID,
+			"name":     column.Name,
+			"color":    column.Color,
+			"position": column.Position,
+		}
+		if column.WIPLimit != nil {
+			payload["wip_limit"] = *column.WIPLimit
+		}
+		return RenderWriteResultJSON(cmd.OutOrStdout(), "column", payload)
+	}
+
+	fields := map[string]string{
+		"Name":     column.Name,
+		"Color":    column.Color,
+		"Position": fmt.Sprintf("%d", column.Position),
+	}
+	if column.WIPLimit != nil {
+		fields["WIP Limit"] = fmt.Sprintf("%d", *column.WIPLimit)
+	}
+	return RenderWriteResult(cmd.OutOrStdout(), "column", column.ID, fields)
+}
+
+func runColumnReorder(cmd *cobra.Command, ns Namespace) error {
+	store, err := defaultStateStore()
+	if err != nil {
+		return err
+	}
+	return runColumnReorderWithStore(cmd, ns, store)
+}
+
+func runColumnReorderWithStore(cmd *cobra.Command, ns Namespace, store *state.Store) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Resolve board scope.
+	var boardID string
+	if cmd.Flags().Changed("board-id") {
+		boardID, _ = cmd.Flags().GetString("board-id")
+	} else if cmd.Flags().Changed("board") {
+		name, _ := cmd.Flags().GetString("board")
+		cliCtx, _ := store.GetCLIContext(ns.Key)
+		workspaceID := cliCtx.WorkspaceID
+		if workspaceID == "" {
+			workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+			if err != nil {
+				return err
+			}
+			if len(workspaces) == 1 {
+				workspaceID = workspaces[0].ID
+			} else {
+				return NewValidation("board-id or board with workspace scope is required")
+			}
+		}
+		boards, err := rt.ContextService.ListBoards(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, b := range boards {
+			if ExactMatch(b.Name, name) {
+				boardID = b.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("board", name)
+		}
+	} else {
+		cliCtx, _ := store.GetCLIContext(ns.Key)
+		if cliCtx.BoardID != "" {
+			boardID = cliCtx.BoardID
+		} else {
+			return NewValidation("board scope required: use --board-id, --board, or kanji context set")
+		}
+	}
+
+	columnIDs, err := cmd.Flags().GetStringArray("column-id")
+	if err != nil {
+		return err
+	}
+	if len(columnIDs) == 0 {
+		return NewValidation("at least one --column-id is required")
+	}
+
+	if err := rt.ContextService.ReorderColumns(ctx, boardID, columnIDs); err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		return RenderWrappedJSON(cmd.OutOrStdout(), "reorder", map[string]interface{}{
+			"board_id":   boardID,
+			"column_ids": columnIDs,
+		})
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), "Columns reordered")
+	return nil
 }
 
 func newColumnGetCommand() *cobra.Command {
@@ -163,6 +410,14 @@ func runColumnGet(cmd *cobra.Command, ns Namespace) error {
 }
 
 func runColumnList(cmd *cobra.Command, ns Namespace) error {
+	store, err := defaultStateStore()
+	if err != nil {
+		return err
+	}
+	return runColumnListWithStore(cmd, ns, store)
+}
+
+func runColumnListWithStore(cmd *cobra.Command, ns Namespace, store *state.Store) error {
 	cfg, err := ResolveConfig(cmd)
 	if err != nil {
 		return err
@@ -187,7 +442,6 @@ func runColumnList(cmd *cobra.Command, ns Namespace) error {
 	} else if cmd.Flags().Changed("board") {
 		name, _ := cmd.Flags().GetString("board")
 		// Need workspace scope for board name resolution.
-		store, _ := defaultStateStore()
 		cliCtx, _ := store.GetCLIContext(ns.Key)
 		workspaceID := cliCtx.WorkspaceID
 		if workspaceID == "" {
@@ -219,7 +473,6 @@ func runColumnList(cmd *cobra.Command, ns Namespace) error {
 		}
 	} else {
 		// Try cli_context board.
-		store, _ := defaultStateStore()
 		cliCtx, _ := store.GetCLIContext(ns.Key)
 		if cliCtx.BoardID != "" {
 			boardID = cliCtx.BoardID

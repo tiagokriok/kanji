@@ -51,6 +51,8 @@ func TestBoardList_MissingScope(t *testing.T) {
 	require.NoError(t, err)
 	rt.Close()
 
+	store := state.NewStore(dir + "/state.json")
+
 	cmd := &cobra.Command{}
 	cmd.Flags().String("db-path", "", "")
 	require.NoError(t, cmd.ParseFlags([]string{"--db-path", dbPath}))
@@ -58,7 +60,7 @@ func TestBoardList_MissingScope(t *testing.T) {
 	cmd.SetOut(buf)
 
 	ns := Namespace{Key: "test-ns", Source: "cwd"}
-	err = runBoardList(cmd, ns)
+	err = runBoardListWithStore(cmd, ns, store)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "workspace")
 }
