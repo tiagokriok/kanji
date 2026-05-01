@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+
+	"github.com/tiagokriok/kanji/internal/domain"
 )
 
 func newWorkspaceCommand() *cobra.Command {
@@ -12,6 +14,7 @@ func newWorkspaceCommand() *cobra.Command {
 		Short: "Workspace operations",
 	}
 	ws.AddCommand(newWorkspaceListCommand())
+	ws.AddCommand(newWorkspaceGetCommand())
 	return ws
 }
 
@@ -27,6 +30,89 @@ func newWorkspaceListCommand() *cobra.Command {
 			return runWorkspaceList(cmd, ns)
 		},
 	}
+}
+
+func newWorkspaceGetCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "get",
+		Short: "Get a workspace by ID or name",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runWorkspaceGet(cmd, ns)
+		},
+	}
+	cmd.Flags().String("workspace-id", "", "workspace ID")
+	cmd.Flags().String("workspace", "", "workspace name")
+	return cmd
+}
+
+func runWorkspaceGet(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	rt, err := NewRuntime(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+
+	if err := GuardBootstrap(rt); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+	if err != nil {
+		return err
+	}
+
+	var workspace domain.Workspace
+	if cmd.Flags().Changed("workspace-id") {
+		id, _ := cmd.Flags().GetString("workspace-id")
+		found := false
+		for _, ws := range workspaces {
+			if ws.ID == id {
+				workspace = ws
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("workspace", id)
+		}
+	} else if cmd.Flags().Changed("workspace") {
+		name, _ := cmd.Flags().GetString("workspace")
+		found := false
+		for _, ws := range workspaces {
+			if ExactMatch(ws.Name, name) {
+				workspace = ws
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("workspace", name)
+		}
+	} else {
+		return NewValidation("workspace-id or workspace is required")
+	}
+
+	if cfg.JSON {
+		return RenderWrappedJSON(cmd.OutOrStdout(), "workspace", map[string]string{
+			"id":   workspace.ID,
+			"name": workspace.Name,
+		})
+	}
+
+	return RenderKV(cmd.OutOrStdout(), map[string]string{
+		"ID":   workspace.ID,
+		"Name": workspace.Name,
+	})
 }
 
 func runWorkspaceList(cmd *cobra.Command, ns Namespace) error {
