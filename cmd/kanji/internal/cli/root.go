@@ -33,6 +33,7 @@ Use "kanji help" for available commands.
 	root.AddCommand(newDBCommand())
 	root.AddCommand(newWorkspaceCommand())
 	root.AddCommand(newBoardCommand())
+	root.AddCommand(newColumnCommand())
 
 	return root
 }
