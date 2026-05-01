@@ -83,23 +83,37 @@ kanji db doctor
 kanji workspace list
 kanji workspace get --workspace-id <id>
 kanji workspace get --workspace "My Workspace"
+kanji workspace create --name "New Workspace"
+kanji workspace update --workspace-id <id> --name "Renamed"
 
 # Boards
 kanji board list --workspace-id <id>
 kanji board get --board-id <id>
+kanji board create --name "New Board" --workspace-id <id>
+kanji board create --name "New Board" --workspace-id <id> --column "Todo" --column "Done"
+kanji board update --board-id <id> --name "Renamed"
 
 # Columns
 kanji column list --board-id <id>
 kanji column get --column-id <id>
+kanji column create --name "Review" --board-id <id>
+kanji column update --column-id <id> --name "Renamed"
+kanji column reorder --board-id <id> --column-id <id1> --column-id <id2>
 
 # Tasks
 kanji task list --workspace-id <id>
 kanji task list --workspace-id <id> --board-id <id> --query "search"
 kanji task get --task-id <id>
+kanji task create --title "New Task" --workspace-id <id>
+kanji task create --title "New Task" --workspace-id <id> --column-id <id>
+kanji task update --task-id <id> --title "Renamed"
+kanji task move --task-id <id> --to-column-id <id>
+kanji task delete --task-id <id> --yes
 
 # Comments
 kanji comment list --task-id <id>
 kanji comment get --comment-id <id>
+kanji comment create --task-id <id> --body "Looks good!"
 ```
 
 ### TUI
