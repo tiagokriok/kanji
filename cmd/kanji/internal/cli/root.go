@@ -31,6 +31,7 @@ Use "kanji help" for available commands.
 	root.AddCommand(newHelpCommand())
 	root.AddCommand(newContextCommand())
 	root.AddCommand(newDBCommand())
+	root.AddCommand(newWorkspaceCommand())
 
 	return root
 }
