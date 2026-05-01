@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/tiagokriok/kanji/internal/infrastructure/db"
 )
 
 func newDBCommand() *cobra.Command {
@@ -24,6 +26,7 @@ func newDBMigrateCommand() *cobra.Command {
 		Short: "Database migrations",
 	}
 	migrate.AddCommand(newDBMigrateUpCommand())
+	migrate.AddCommand(newDBMigrateStatusCommand())
 	return migrate
 }
 
@@ -39,6 +42,57 @@ func newDBMigrateUpCommand() *cobra.Command {
 			return runDBMigrateUp(cmd, ns)
 		},
 	}
+}
+
+func newDBMigrateStatusCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Show migration status",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ns, err := ResolveNamespace()
+			if err != nil {
+				return err
+			}
+			return runDBMigrateStatus(cmd, ns)
+		},
+	}
+}
+
+func runDBMigrateStatus(cmd *cobra.Command, ns Namespace) error {
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	adapter, err := db.NewSQLiteAdapter(cfg.DBPath)
+	if err != nil {
+		return err
+	}
+	defer adapter.Close()
+
+	var version int64
+	var status string
+	err = adapter.Raw().QueryRow(
+		"SELECT version_id FROM goose_db_version ORDER BY version_id DESC LIMIT 1",
+	).Scan(&version)
+	if err != nil {
+		status = "unmigrated"
+		version = 0
+	} else {
+		status = "migrated"
+	}
+
+	if cfg.JSON {
+		payload := map[string]interface{}{
+			"status":  status,
+			"version": version,
+		}
+		return RenderWrappedJSON(cmd.OutOrStdout(), "migrate", payload)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Status:  %s\n", status)
+	fmt.Fprintf(cmd.OutOrStdout(), "Version: %d\n", version)
+	return nil
 }
 
 func runDBMigrateUp(cmd *cobra.Command, ns Namespace) error {
