@@ -24,6 +24,7 @@ func newContextCommand() *cobra.Command {
 	}
 	ctx.AddCommand(newContextShowCommand())
 	ctx.AddCommand(newContextClearCommand())
+	ctx.AddCommand(newContextSetCommand())
 	return ctx
 }
 
@@ -122,6 +123,158 @@ func runContextClear(cmd *cobra.Command, store *state.Store) error {
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Cleared CLI context for namespace: %s\n", ns.Key)
+	return nil
+}
+
+func newContextSetCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set",
+		Short: "Set explicit CLI context for the current namespace",
+		Long: `Set the workspace and optionally the board for the current namespace.
+
+If only a workspace is provided, any existing board context is cleared.
+Board name resolution requires a workspace scope.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, err := ResolveConfig(cmd)
+			if err != nil {
+				return err
+			}
+			rt, err := NewRuntime(cmd.Context(), cfg)
+			if err != nil {
+				return err
+			}
+			defer rt.Close()
+			store, err := defaultStateStore()
+			if err != nil {
+				return err
+			}
+			return runContextSet(cmd, rt, store)
+		},
+	}
+	cmd.Flags().String("workspace-id", "", "workspace ID")
+	cmd.Flags().String("workspace", "", "workspace name")
+	cmd.Flags().String("board-id", "", "board ID")
+	cmd.Flags().String("board", "", "board name")
+	return cmd
+}
+
+func runContextSet(cmd *cobra.Command, rt *Runtime, store *state.Store) error {
+	ns, err := ResolveNamespace()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := ResolveConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	ctx := cmd.Context()
+
+	// Resolve workspace.
+	var workspaceID string
+	if cmd.Flags().Changed("workspace-id") {
+		id, _ := cmd.Flags().GetString("workspace-id")
+		workspaceID = id
+		// Validate existence.
+		workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, ws := range workspaces {
+			if ws.ID == workspaceID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("workspace", workspaceID)
+		}
+	} else if cmd.Flags().Changed("workspace") {
+		name, _ := cmd.Flags().GetString("workspace")
+		workspaces, err := rt.ContextService.ListWorkspaces(ctx)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, ws := range workspaces {
+			if ExactMatch(ws.Name, name) {
+				workspaceID = ws.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("workspace", name)
+		}
+	} else {
+		return NewValidation("workspace-id or workspace is required")
+	}
+
+	// Resolve board.
+	var boardID string
+	if cmd.Flags().Changed("board-id") {
+		id, _ := cmd.Flags().GetString("board-id")
+		boardID = id
+		// Validate existence within workspace.
+		boards, err := rt.ContextService.ListBoards(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, b := range boards {
+			if b.ID == boardID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("board", boardID)
+		}
+	} else if cmd.Flags().Changed("board") {
+		name, _ := cmd.Flags().GetString("board")
+		boards, err := rt.ContextService.ListBoards(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, b := range boards {
+			if ExactMatch(b.Name, name) {
+				boardID = b.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			return NewNotFound("board", name)
+		}
+	}
+
+	// Save context.
+	if err := store.SetCLIContext(ns.Key, state.CLIContext{
+		WorkspaceID: workspaceID,
+		BoardID:     boardID,
+	}); err != nil {
+		return err
+	}
+
+	if cfg.JSON {
+		payload := map[string]string{
+			"namespace":    ns.Key,
+			"workspace_id": workspaceID,
+		}
+		if boardID != "" {
+			payload["board_id"] = boardID
+		}
+		return RenderWrappedJSON(cmd.OutOrStdout(), "context", payload)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Context set for namespace: %s\n", ns.Key)
+	fmt.Fprintf(cmd.OutOrStdout(), "Workspace: %s\n", workspaceID)
+	if boardID != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "Board:     %s\n", boardID)
+	}
 	return nil
 }
 
